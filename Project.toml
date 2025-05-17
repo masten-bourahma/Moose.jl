@@ -1,0 +1,13 @@
+name = "Moose"
+uuid = "527993f1-2ecf-43d8-8abe-4531359ddf9b"
+authors = ["masten"]
+version = "1.0.0-DEV"
+
+[compat]
+julia = "1.6.7"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
