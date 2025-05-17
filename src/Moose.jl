@@ -1,5 +1,16 @@
+""" Moose 
+    MUSE objects observation & shift estimation
+"""
+
 module Moose
 
-# Write your package code here.
+
+include("nmf.jl")
+include("tools.jl")
+
+include("fnnls.jl")
+
+include("moose.jl")
+
 
 end
