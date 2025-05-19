@@ -1,4 +1,4 @@
-module nmf
+module Moosenmf
 
 export NMF, nearly!, sequential, rankify
 using HDF5, LinearAlgebra, Base.Threads
@@ -90,11 +90,11 @@ Reference: Dylan Green and Stephen Bailey 2024, https://arxiv.org/abs/2311.04855
 
 # Returns
 - `χ2`: frobenius norm at last iteration 
-- `iter`: exit (last) iteration
+- `iter`: exit/last iteration
 """
 
 function nearly!(nmf::NMF)
-    iter    = 0
+    iter    = 1
     nan_eps = 1f-6
     inf_eps = 1f-6 
 
