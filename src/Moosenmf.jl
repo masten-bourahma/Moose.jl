@@ -1,7 +1,7 @@
 module Moosenmf
 
 export NMF, nearly!, sequential, rankify
-using HDF5, LinearAlgebra, Base.Threads
+using HDF5, Base.Threads
 
 """
 # summary    

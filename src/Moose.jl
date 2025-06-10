@@ -1,16 +1,10 @@
-""" Moose 
-    MUSE objects observation & shift estimation
-"""
-
 module Moose
 
 
-include("nmf.jl")
-include("tools.jl")
+include("Moosenmf.jl")
+include("Strutture.jl")
+include("Metrics.jl")
 
-include("fnnls.jl")
-
-include("moose.jl")
-
+export GF, MAE, MAD
 
 end
