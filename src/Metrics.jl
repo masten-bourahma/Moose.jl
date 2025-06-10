@@ -1,0 +1,142 @@
+using Statistics
+
+"""
+    sanitize(z,ẑ)
+
+Description
+===========
+
+Help function, this function checks for any NaN or Inf in the input vectors of true
+and predicted redshifts (z & ẑ respectively), if any it masks them and raises a warning
+to the user. It also ensures that both vectors have the same size.
+
+Arguments
+=========
+
+- **`z`**: vector of true redshifts
+- **`ẑ`**: vector of predicted redshifts
+
+Author(s)
+=========
+
+B. Masten
+
+"""
+function sanitize(z::Vector{Float32},ẑ::Vector{Float32})
+
+    # 1. Check for same size
+    if length(z) != length(ẑ)
+        err = "Vectors have different sizes: $(length(z)) and $(length(ẑ))"
+        error(err)
+    end
+    # 2. Check for NaN or Inf
+    if !all(isfinite, z)
+        @warn "z contains non-finite values (NaN or Inf). A mask will be applied!"
+    end
+
+    if !all(isfinite, ẑ)
+        @warn "ẑ contains non-finite values (NaN or Inf). A mask will be applied!"
+    end
+
+    # 3. Mask NaNs & Inf if any and calculate GF 
+    isok = isfinite.(z) .&& isfinite.(ẑ)
+    z    = z[isok]
+    ẑ    = ẑ[isok]
+    return z, ẑ
+end
+
+"""
+    GF(z,ẑ; tMUSE = 0.1)
+
+Arguments    
+=========
+
+- **`z`**: vector of true redshifts
+- **`ẑ`**: vector of predicted redshifts
+- **`tMUSE`**: redshift error tolerance for MUSE
+
+Details
+=======
+
+Given the vectors of true redshifts z and the predicted redshifts ẑ, this function
+calculates the good fraction GF, defined as the ratio between the number of good predictions
+and the total number of predictions. A good prediction is a one that has an error
+Δz   = |z - ẑ| less than a threshold t (tMUSE) in the code, the threshold is 
+set by the scientific goal.
+
+Author(s)
+=========
+
+B. masten
+"""
+function GF(z::Vector{Float32},ẑ::Vector{Float32}, tMUSE::Float32 = 0.1f0)
+
+    z, ẑ  = sanitize(z, ẑ )
+    Δz    = abs.(z .- ẑ)
+    Ngood = sum(Δz .< tMUSE)
+    N     = length(z)
+    return Ngood/N
+end
+
+"""
+    MAE(z,ẑ)
+
+Description
+===========
+This function calculates the mean absolute error (MAE) score, given the vectors of true
+and predicted resdshifts (z & ẑ respectively). MAE is calculated as follow:
+MAE = (Σ_i i=1..N |z - ẑ|) / N
+
+Arguments
+=========
+
+- **`z`**: vector of true redshifts
+- **`ẑ`**: vector of predicted redshifts
+
+Author(s)
+=========
+
+B. Masten
+"""
+
+function MAE(z::Vector{Float32}, ẑ::Vector{Float32})
+
+    z, ẑ  = sanitize(z, ẑ )
+    Δz    = abs.(z .- ẑ)
+    N     = length(Δz)
+    MAE_   = sum(Δz) /N
+
+    return MAE_
+end
+
+"""
+    MAD(z,ẑ)
+
+Description
+===========
+
+This function calculates the median absolute deviation (MAD), given the vectors
+of true and predicted resdshifts (z & ẑ respectively). MAD is calculated as follow:
+MAD = median(|Δz_i - median(Δz)|)
+
+Arguments
+=========
+
+- **`z`**: vector of true redshifts
+- **`ẑ`**: vector of predicted redshifts
+
+Author(s)
+=========
+
+B. Masten
+"""
+
+function MAD(z::Vector{Float32}, ẑ::Vector{Float32})
+
+    z, ẑ   = sanitize(z, ẑ )
+    Δz     = abs.(z .- ẑ)
+    Δz̃     = median(Δz)
+    MAD_   = median(abs.(Δz .- Δz̃))
+
+    return MAD_
+end
