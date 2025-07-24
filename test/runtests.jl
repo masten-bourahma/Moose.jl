@@ -10,14 +10,14 @@ using Test
         @test Moose.MAD(z, ẑ) ==  0.0f0
     end
 
-    #@testset "Tests Strutture.jl" begin
-    #    grid  = Moose.Γgrid()
-    #    basis = Basis()
+    @testset "Tests Strutture.jl" begin
+        grid  = Moose.Γgrid()
+        basis = Basis()
 
-    #    @test length(grid.ζ) == length(grid.ζmin : grid.δζ : grid.ζmax)
-    #    @test basis.n == length(grid.ζ) 
-        #@test Moose.MAD(z, ẑ) ==  0.0f0
-    #end
+        @test length(grid.ζ) == length(grid.ζmin : grid.δζ : grid.ζmax)
+        @test basis.n == length(grid.ζ) 
+        @test Moose.MAD(z, ẑ) ==  0.0f0
+    end
 
     @testset "Tests Leggere.jl" begin
         path = joinpath(@__DIR__, "../data/spectra_sample/")
