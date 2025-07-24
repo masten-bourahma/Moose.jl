@@ -1,8 +1,4 @@
-module Strutture
-
-using Statistics
-
-export Γgrid
+using Statistics, HDF5
 
 """
     Γgrid(; λmin = 4500f0, λmax = 9350f0, δλ = 1.25f0,
@@ -25,7 +21,7 @@ Arguments
 
 - **`λmin ::Float32 = 4500`**   : MUSE minimal observed wavelength in Å
 - **`λmax ::Float32 = 9350`**   : MUSE maximal observed wavelength in Å
-- **`δλ   ::Float32 = 1.24`**   : MUSE spectral resolution in Å
+- **`δλ   ::Float32 = 1.25`**   : MUSE spectral resolution in Å
 - **`ζmin ::Float32 = 0`**      : minimum test redshift
 - **`ζmax ::Float32 = 7`**      : maximum test redshift
 - **`δζ   ::Float32 = 0.0015`** : step of test redshift
@@ -64,7 +60,7 @@ struct Γgrid
     ζ  :: Vector{Float32}
 
     function Γgrid(;λmin = 4500f0, λmax = 9350f0, δλ = 1.25f0,
-                    ζmin = 0f0,    ζmax = 7f0,    δζ = 0.0015f0)
+                    ζmin = 0f0,    ζmax = 7f0,    δζ = 0.001f0)
         
         Γmin  = log10(λmin/(1+ζmax))
         Γmax  = log10(λmax)
@@ -87,11 +83,13 @@ end
 
 Description
 ============
-This struct loads the basis vectors matrix H and pre-computes several matricial products and stores them in its fields.
+This struct loads the basis vectors matrix H and pre-computes several matricial products and stores them in a julia Struct.
 This storage allows to save computational ressources and speed the code. No arguments are needed to initialize this struct.
+By default it loads a rank 10 NMF basis vectors obtained using a sequentail nearly-NMF on ~7000 galaxy spectra
 
 Arguments
 ==========
+None
 
 Details
 =======
@@ -108,32 +106,36 @@ struct Basis
     
     HHti    :: Vector{Matrix{Float32}}
     Hi      :: Vector{Matrix{Float32}}
+    
+    λinterp :: Matrix{Float32}
+    
     l       :: Int32
     n       :: Int32
     
-    λinterp :: Matrix{Float32}
+    
 
     function Basis()
 
-        γ = Γgrid()
-        n =  length(γ.ζ)
-
+        grid = Γgrid()
+        n           = length(grid.ζ)
+        script_dir = @__DIR__
+        
         # Load basis matrix 
-        Hpath = "/home/masten/Desktop/moose/moose_code/results/H_matrices/H.h5"
+        Hpath = joinpath(script_dir, "../data/basis_vectors/H_2p170461fm5_0p8X.h5")
         H = try
             h5open(Hpath, "r") do file
-                read(file, "rank_7")  # Ensure this returns Matrix{Float32}
+                read(file, "rank_10")  # Ensure this returns Matrix{Float32}
             end
         catch err
             error("Failed to load H: ", err)
         end
         
-        Ht = transpose(H)  # More efficient than H'
+        Ht = transpose(H) 
         k = Int(size(H, 1))
 
-        l    = Int32(floor.((log10.(γ.λmax) - log10.(4700)) / γ.δΓ)) 
-        λstrt       = log10.(4700f0 ./ (1 .+ γ.ζ))
-        istrt       = Int32.(floor.((λstrt .- γ.Γmin) ./ γ.δΓ))
+        l    = Int32(floor.((log10.(grid.λmax) - log10.(4700)) / grid.δΓ)) 
+        λstrt       = log10.(4700f0 ./ (1 .+ grid.ζ))
+        istrt       = Int32.(floor.((λstrt .- grid.Γmin) ./ grid.δΓ))
 
         HHti= Vector{Matrix{Float32}}(undef, n)
         Hi  = Vector{Matrix{Float32}}(undef, n)
@@ -152,11 +154,8 @@ struct Basis
         end
 
         #interpolation basis
-        λinterp = transpose(collect(Float32, log10(4700): γ.δΓ : γ.Γmax - γ.δΓ)) .- log10.(1 .+ γ.ζ)
+        λinterp = transpose(collect(Float32, log10(4700): grid.δΓ : grid.Γmax - grid.δΓ)) .- log10.(1 .+ grid.ζ)
         # Create instance
-        new(H, Ht, k, HHti, Hi, l,  n, λinterp)
+        new(H, Ht, k, HHti, Hi, λinterp, l,  n)
     end
-end
-
-
 end
