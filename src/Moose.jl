@@ -1,7 +1,7 @@
 module Moose
 
 
-include("nmf.jl")
+#include("nmf.jl")
 include("strutture.jl")
 include("metrics.jl")
 include("fnnls.jl")
