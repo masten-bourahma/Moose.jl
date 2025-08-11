@@ -94,10 +94,7 @@ None
 Details
 =======
 
-
-
 """
-
 struct Basis
 
     H       :: Matrix{Float32}   # Full basis vectors matrix

@@ -5,7 +5,6 @@ using Statistics
 
 Description
 ===========
-
 Help function, this function checks for any NaN or Inf in the input vectors of true
 and predicted redshifts (z & ẑ respectively), if any it masks them and raises a warning
 to the user. It also ensures that both vectors have the same size.
@@ -18,9 +17,7 @@ Arguments
 
 Author(s)
 =========
-
 B. Masten
-
 """
 function sanitize(z::Vector{Float32},ẑ::Vector{Float32})
 
@@ -45,8 +42,20 @@ function sanitize(z::Vector{Float32},ẑ::Vector{Float32})
     return z, ẑ
 end
 
-"""
-    GF(z,ẑ; tMUSE = 0.1)
+@doc raw"""
+    GF(z::Vector{Float32},ẑ::Vector{Float32}; tMUSE::Float32 = 0.1f0)
+
+Description
+===========
+This function calculates the Good Fraction (GF), given vectors of true and predicted redshift z and ẑ.
+GF is defined as,
+```math
+\begin{aligned}
+&& GF &= \frac{\rm good}{N} \\
+\end{aligned}
+```
+``N_{\rm good}`` and ``N`` are respectively the number of good predictions and the total number of predictions. A prediction is good when it satistifies ``\Delta z = |z - ẑ| < t``, 
+where ``t`` is a threshold that can be set by setting the keyword argument `tMUSE`. 
 
 Arguments    
 =========
@@ -70,7 +79,6 @@ Author(s)
 B. masten
 """
 function GF(z::Vector{Float32},ẑ::Vector{Float32}, tMUSE::Float32 = 0.1f0)
-
     z, ẑ  = sanitize(z, ẑ )
     Δz    = abs.(z .- ẑ)
     Ngood = sum(Δz .< tMUSE)
@@ -79,7 +87,7 @@ function GF(z::Vector{Float32},ẑ::Vector{Float32}, tMUSE::Float32 = 0.1f0)
 end
 
 """
-    MAE(z,ẑ)
+    MAE(z::Vector{Float32}, ẑ::Vector{Float32})
 
 Description
 ===========
@@ -98,19 +106,16 @@ Author(s)
 
 B. Masten
 """
-
 function MAE(z::Vector{Float32}, ẑ::Vector{Float32})
-
     z, ẑ  = sanitize(z, ẑ )
     Δz    = abs.(z .- ẑ)
     N     = length(Δz)
     MAE_   = sum(Δz) /N
-
     return MAE_
 end
 
 """
-    MAD(z,ẑ)
+    MAD(z::Vector{Float32}, ẑ::Vector{Float32})
 
 Description
 ===========
@@ -130,13 +135,11 @@ Author(s)
 
 B. Masten
 """
-
 function MAD(z::Vector{Float32}, ẑ::Vector{Float32})
-
     z, ẑ   = sanitize(z, ẑ )
     Δz     = abs.(z .- ẑ)
     Δz̃     = median(Δz)
     MAD_   = median(abs.(Δz .- Δz̃))
-
     return MAD_
 end
+
