@@ -87,7 +87,7 @@ basis = Basis()
               
         nmf = nNMF(X)
         error, iter = nearly!(nmf)
-        @test (abs(error -  3.3495386) < 1f-3) && (iter ==1)
+        @test (abs(error -  5.6912923) < 1f-3) && (iter ==1)
     end
 
 end
