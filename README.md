@@ -16,6 +16,6 @@ julia> Pkg.add("Moose")
 ## Technical Details
 `Moose.jl` leverages a data-driven representation of MUSE galaxy spectra in the rest frame, learned through Non-negative Matrix Factorization (NMF), and  exploits this representation to predict redshifts for previously unseen galaxies. 
   
-![Moose.jl workflow](docs/assets/nmf_flow.png)
+![`Moose.jl workflow`](docs/src/assets/nmf_flow.png)
  
 
