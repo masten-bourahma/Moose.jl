@@ -2,8 +2,20 @@
 
 [![Build Status](https://github.com/masten-bourahma/Moose.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/masten-bourahma/Moose.jl/actions/workflows/CI.yml?query=branch%3Amain)
 
-# a package for detecting and estimating redshift of galaxies in MUSE data 
+## Description
+`Moose.jl` is a Julia package for estimating galaxy redshifts from observations with the Multi-Unit Spectroscopic Explorer (MUSE). 
+This package includes an implementation of [nearly-NMF]()
 
-The package is structured as follows:
-* Moosenmf
-* Moose
+## Installation 
+
+```julia REPL
+julia> using Pkg
+julia> Pkg.add("Moose")
+```
+
+## Technical Details
+`Moose.jl` leverages a data-driven representation of MUSE galaxy spectra in the rest frame, learned through Non-negative Matrix Factorization (NMF), and  exploits this representation to predict redshifts for previously unseen galaxies. 
+  
+![Moose.jl workflow](docs/assets/nmf_flow.png)
+ 
+
