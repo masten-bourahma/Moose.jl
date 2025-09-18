@@ -1,6 +1,6 @@
 # Moose.jl Documentation
 
-Welcome to the documentation for Moose.jl!
+Welcome to the documentation for `Moose.jl`!
 
 ## Installation 
 

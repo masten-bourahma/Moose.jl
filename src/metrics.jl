@@ -143,3 +143,82 @@ function MAD(z::Vector{Float32}, ẑ::Vector{Float32})
     return MAD_
 end
 
+
+"""
+    Δχ2(χ2::Vector{Float32})
+
+Description
+===========
+
+This function calculates the Δχ2 significance score, given a chi-square curve
+Δχ2 is calculated as follow:
+
+```math
+\begin{aligned}
+&& \\Delta \\chi^2 & = 1 - \frac{\\chi^2_{\rm min}}{\rm{Q1}(\\chi^2)} \\
+\end{aligned}
+```
+
+Arguments
+=========
+
+- **`χ2`**: chi-square curve vector
+
+Returns
+=======
+
+- **`Δχ2`**: redshift significance score
+
+Author(s)
+=========
+
+B. Masten
+"""
+function Δχ2(χ2::Vector{Float32})
+    Q1     = quantile(χ2, 0.25)
+    Δχ2_  = 1 - minimum(χ2 ./ Q1)
+    return Δχ2_
+end
+
+"""
+    R(χ2::Vector{Float32})
+
+Description
+===========
+
+This function calculates the R robustness score, given a chi-square curve
+R is calculated as follow:
+
+```math
+\begin{aligned}
+&& R & = 1 - \frac{\\chi^2_{\rm min}}{\rm{Q1}(\\chi^2)} \\
+\end{aligned}
+```
+
+Arguments
+=========
+
+- **`χ2`**: chi-square curve vector
+
+Returns
+=======
+
+- **`R`**: redshift robustness score
+
+Author(s)
+=========
+
+B. Masten
+"""
+function R(χ2::Vector{Float32})
+    Q1     = quantile(χ2, 0.25)
+    min1   = minimum(χ2) 
+    mindex = argmin(χ2)
+    mask   = ones(Bool, ;length(χ2))
+    mask[max(1, mindex - 25): min(n, mindex + 25)] .= false
+    min2   = sort(χ2[mask])[1]
+
+    R_ =  (min2 - min1) / std(χ2[χ2 .<= Q1])
+    
+    return R_
+end
