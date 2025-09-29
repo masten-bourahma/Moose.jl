@@ -29,4 +29,4 @@ julia> Pkg.add("Moose")
 The performance of `Moose.jl` is assessed in `learn/test` data split configuration, where the `learn` fraction of the data is used to learn the basis vectors, and the test fraction is used to assess the performance on the redshift prediction task. The metric for the performance is the `Good Fraction` (GF). GF is defined as the fraction of prediction satisfying $$\Delta z = |z_p - z_t| < 0.1 $$ ($$z_p, z_t$$ are the predicted and true redshift vectors) over the total number of predictions. We quote a GF of $$94\%$$.
 
 The plot below shows the GF of `Moose.jl` as a function of the signal-to-noise (SNR) ratio and as function of redshift $$z$$
-![`Moose.jl performance`](docs/src/assets/test_z_snr.png)
+<img src="docs/src/assets/test_z_snr.png" alt="`Moose.jl performance`" width="600"/>
