@@ -161,7 +161,7 @@ Arguments
 =========
 - **`wgrid       ::Γgrid`**     : Γgrid Struct
 - **`basis       ::Basis`**     : Basis Struct
-- **`data        ::Struct`**    : data Struct with four fields: flux, sdev, wave, idsdefault
+- **`data        ::Struct`**    : Named Tuple with four fields: flux, sdev, wave, ids
 - **`output_path ::String`**    : Path where the chi2 file will be saved 
 
 Returns
@@ -171,10 +171,9 @@ nothing
 Methods
 =======
 - `χfits(data; output_path::String = nothing)`: `wgrid` and `basis` are instantiated within the method.
-- `χfits(fits_path::String, DataExtName::Union{String, Int}, StatExtName::Union{String, Int}; output_path::String = nothing)`: `wgrid` and `basis` are instantiated within the method,
-the data is loaded within the function using the provided `fits_path` and the extensions: `DataExtName`, `StatExtName`.
-- `χfits(wgrid::Γgrid, basis::Basis, fits_path::String, DataExtName::Union{String, Int}, StatExtName::Union{String, Int}; output_path::String = nothing)`: the data  is loaded within
-the function using the provided `fits_path` and the extensions: `DataExtName`, `StatExtName`.
+- `χfits(fits_path::String, DataExtName::Union{String, Int}, StatExtName::Union{String, Int}; output_path::String = nothing)`: `wgrid` and `basis` are instantiated within the method, the data is loaded within the function using the provided `fits_path` and the extensions: `DataExtName`, `StatExtName`.
+- `χfits(wgrid::Γgrid, basis::Basis, fits_path::String, DataExtName::Union{String, Int}, StatExtName::Union{String, Int}; output_path::String = nothing)`: the data  is loaded within the function using the provided `fits_path` and the extensions: `DataExtName`, `StatExtName`.
+
 Example
 =======
 ```julia

@@ -24,6 +24,7 @@ makedocs(  sitename="Moose.jl",
            #remotes = nothing,
            format = Documenter.HTML(
                     prettyurls = get(ENV, "CI", nothing) == "true",
+                    collapselevel = 2,
                     #assets = ["assets/logo.png"],
                     #assets  = String[ indigo_css_path,] ,
                     ),
