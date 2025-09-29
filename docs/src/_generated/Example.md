@@ -9,6 +9,13 @@ Let's start by importing the needed packages
 using Moose, FITSIO, Plots
 ````
 
+````
+Precompiling DisplayAs...
+    623.7 ms  ✓ DisplayAs
+  1 dependency successfully precompiled in 1 seconds
+
+````
+
 Let's instantiate a rest frame wavelength grid (Γgrid) and the Basis Struct.
 ```julia
 wgrid = Γgrid()

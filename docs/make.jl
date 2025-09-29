@@ -9,16 +9,16 @@ literate_src_dir   = joinpath(@__DIR__, "src", "_literate")
 literate_build_dir = joinpath(@__DIR__, "src", "_generated") 
 
 # Process your Literate script
-Literate.markdown(
-    joinpath(literate_src_dir, "Example.jl"),
-    literate_build_dir;
-    size_threshold = 400,
-    size_threshold_warn = 250 * 1024,
-    execute = true,          # Runs the code and captures output
-    documenter = true,       # Handles Documenter-specific syntax
-    name = "Example",   # Output file will be usage_example.md
-    credit = true,          # Optional: Removes "Powered by Literate.jl" footnote
-)
+#Literate.markdown(
+#    joinpath(literate_src_dir, "Example.jl"),
+#    literate_build_dir;
+#    size_threshold = 400,
+#    size_threshold_warn = 250 * 1024,
+#    execute = true,          # Runs the code and captures output
+#    documenter = true,       # Handles Documenter-specific syntax
+#    name = "Example",   # Output file will be usage_example.md
+#    credit = true,          # Optional: Removes "Powered by Literate.jl" footnote
+#)
 
 makedocs(  sitename="Moose.jl",
            #remotes = nothing,
@@ -32,6 +32,8 @@ makedocs(  sitename="Moose.jl",
            pages   = [ "Home" => "index.md", # Main page
                        "Introduction" => "introduction.md",
                        "Usage example" => "_generated/Example.md",
+                       "Usage example, running Moose on fits files" => "example_fits.md",
+                       "Usage example, running Moose on a datacube" => "example_cube.md",
                        "API reference" => "api_reference.md", 
                        "References" => "references.md"],
            doctest = :true,

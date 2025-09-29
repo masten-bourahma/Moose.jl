@@ -145,13 +145,13 @@ end
 
 
 """
-    Δχ2(χ2::Vector{Float32})
+    Δχ²(χ²::Vector{Float32})
 
 Description
 ===========
 
-This function calculates the Δχ2 significance score, given a chi-square curve
-Δχ2 is calculated as follow:
+This function calculates the Δχ² significance score, given a chi-square curve
+Δχ² is calculated as follow:
 
 ```math
 \begin{aligned}
@@ -162,22 +162,22 @@ This function calculates the Δχ2 significance score, given a chi-square curve
 Arguments
 =========
 
-- **`χ2`**: chi-square curve vector
+- **`χ²`**: chi-square curve vector
 
 Returns
 =======
 
-- **`Δχ2`**: redshift significance score
+- **`Δχ²`**: redshift significance score
 
 Author(s)
 =========
 
 B. Masten
 """
-function Δχ2(χ2::Vector{Float32})
-    Q1     = quantile(χ2, 0.25)
-    Δχ2_  = 1 - minimum(χ2 ./ Q1)
-    return Δχ2_
+function Δχ²(χ²::Vector{Float32})
+    Q1     = quantile(χ², 0.25)
+    Δχ²_  = 1 - minimum(χ² ./ Q1)
+    return Δχ²_
 end
 
 """
@@ -211,11 +211,12 @@ Author(s)
 B. Masten
 """
 function R(χ2::Vector{Float32})
+    N      = length(χ2)
     Q1     = quantile(χ2, 0.25)
     min1   = minimum(χ2) 
     mindex = argmin(χ2)
-    mask   = ones(Bool, ;length(χ2))
-    mask[max(1, mindex - 25): min(n, mindex + 25)] .= false
+    mask   = ones(Bool, N)
+    mask[max(1, mindex - 25): min(N, mindex + 25)] .= false
     min2   = sort(χ2[mask])[1]
 
     R_ =  (min2 - min1) / std(χ2[χ2 .<= Q1])

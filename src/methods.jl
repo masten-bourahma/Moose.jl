@@ -1,4 +1,5 @@
 using Base.Threads, Dates
+using ProgressMeter: @showprogress
 
 """
     interpolate( basis::Basis, fλ::Vector{Float32}, σλ::Vector{Float32}, λ::Vector{Float32}; extrpfλ = 0.0f0, extrpσλ = 1f6)
@@ -120,7 +121,9 @@ function threaded_fnnls(basis::Basis, fλ::Vector{Float32}, σλ::Vector{Float32
     
     n, l  = basis.n, basis.l
     
-    χ2= Vector{Float32}(undef, n)
+    χ² = Vector{Float32}(undef, n)
+    Ω  = Vector{Vector{Float32}}(undef, n)
+
     f̂λ_threads     = [Vector{Float32}(undef, l) for _ in 1:Threads.nthreads()]
 
 
@@ -130,54 +133,64 @@ function threaded_fnnls(basis::Basis, fλ::Vector{Float32}, σλ::Vector{Float32
         f̂λ        = f̂λ_threads[thread_id]
         Hi        =  basis.Hi[i]
 
-        @inbounds θ = fnnls(basis.HHti[i],  Hi * fλ)
-        mul!(f̂λ, transpose(Hi), vec(θ))
+        @inbounds ω = fnnls(basis.HHti[i],  Hi * fλ)
+        mul!(f̂λ, transpose(Hi), vec(ω))
 
         total_sum = 0.0f0
-
         @simd for j in 1:l
             @inbounds total_sum += ((f̂λ[j] - fλ[j])/σλ[j])^2
         end
 
-        χ2[i] =  total_sum / l
+        χ²[i] = total_sum / l
+        Ω[i]  = ω
+
     end
 
-    return χ2
+    return χ², Ω
 end
 
 """
-    χloop(basis:Basis, data; output_path = nothing)
+    χfits(wgrid::Γgrid, basis:Basis, data; output_path::String = nothing)
 
 Description
 ===========
-Runs a threaded FNNLS on a set of spectra loaded into a data Struct apriori. Resulting chi2 curves are
+Runs a threaded FNNLS on a set of spectra loaded into a data Struct apriori and stored in data. Resulting chi2 curves are
 saved into an h5 file, whose path and name are specified by setting the keyword argument 'output_path' 
 
 Arguments
 =========
-- **`basis ::Basis`**            : Basis Struct
-- **`data  ::Struct`**           : data Struct with four fields: flux, sdev, wave, idsdefault
-- **`output_path  ::String`**    : Path where the chi2 file will be saved 
+- **`wgrid       ::Γgrid`**     : Γgrid Struct
+- **`basis       ::Basis`**     : Basis Struct
+- **`data        ::Struct`**    : data Struct with four fields: flux, sdev, wave, idsdefault
+- **`output_path ::String`**    : Path where the chi2 file will be saved 
 
 Returns
 =======
 nothing
 
+Methods
+=======
+- `χfits(data; output_path::String = nothing)`: `wgrid` and `basis` are instantiated within the method.
+- `χfits(fits_path::String, DataExtName::Union{String, Int}, StatExtName::Union{String, Int}; output_path::String = nothing)`: `wgrid` and `basis` are instantiated within the method,
+the data is loaded within the function using the provided `fits_path` and the extensions: `DataExtName`, `StatExtName`.
+- `χfits(wgrid::Γgrid, basis::Basis, fits_path::String, DataExtName::Union{String, Int}, StatExtName::Union{String, Int}; output_path::String = nothing)`: the data  is loaded within
+the function using the provided `fits_path` and the extensions: `DataExtName`, `StatExtName`.
 Example
 =======
 ```julia
 # 1. Initialize Basis Struct
+wgrid = Γgrid()
 basis = Basis()
 
 # 2. read data from fits files
 data = leggere_fits("../data/spectra_sample")
 
 #3. Specify output file path and run χloop
-my_chi2file = "../output/chi2_files/chi2_moose.h5
-χloop(basis, data; output_path = my_chi2file)
+my_chi2file = "../output/chi2_files/chi2_moose.h5"
+χfits(wgrid, basis, data; output_path = my_chi2file)
 ```
 """
-function χloop(basis::Basis, data; output_path = nothing)
+function χfits(wgrid::Γgrid, basis::Basis, data; output_path::String = nothing)
 
     if isnothing(output_path)
         output_path = joinpath( @__DIR__, "../output/results/chi2_files/chi2_$(now).h5")
@@ -189,27 +202,216 @@ function χloop(basis::Basis, data; output_path = nothing)
     
     n = length(data.flux)
 
-    for i in 1:n
+    @showprogress for i in 1:n
+        
+        fλ = data.flux[i]
+        σλ = data.sdev[i]         
+        λ  = data.awave[i]
+
+        intrpfλ, intrpσλ = interpolate(basis, fλ .* λ, σλ .* λ , λ)
+        #χ² curve
+        χ², Ω = threaded_fnnls(basis, intrpfλ, intrpσλ)
+        # predicted redshift ẑ  
+
+        ẑ     = wgrid.ζ[argmin(χ²)]
+        # decomposition coeffs 
+        ω     = Ω[argmin(χ²)]
+        # significance score \Delta\chi2
+        Δχ²_  = Δχ²(χ²)
+        # Robustness metric R
+        R_    = R(χ²)
+        
+        dset = Dict( "chi2"   => χ², "omega_hat"  => ω, "z_hat"  => ẑ, "dchi2"  => Δχ²_, "R"      => R_ )
+
+        if isfile(output_path)
+            h5open(output_path, "r+") do file
+                grp = create_group(file, data.ids[i])
+                for (key,value) in dset
+                    write(grp, key, value)
+                end
+                #write(file, data.ids[i], collect((χ², ω, ẑ, Δχ²_,R_)) )
+            end
+        else
+            h5open(output_path, "w") do file
+                grp = create_group(file, data.ids[i])
+                for (key,value) in dset
+                    write(grp, key, value)
+                end
+                #write(file, data.ids[i], collect((χ², ω, ẑ, Δχ²_,R_)))
+            end
+        end
+    end
+end
+
+function χfits(data; output_path::String = nothing)
+    wgrid = Γgrid()
+    basis = Basis()
+
+    if isnothing(output_path)
+        output_path = joinpath( @__DIR__, "../output/results/chi2_files/chi2_$(now).h5")
+    end
+
+    if isfile(output_path)
+        @warn "Output path,  a file with the same name already exists!"
+    end
+    
+    n = length(data.flux)
+
+    @showprogress for i in 1:n
 
         fλ = data.flux[i]
         σλ = data.sdev[i]         
         λ  = data.awave[i]
 
         intrpfλ, intrpσλ = interpolate(basis, fλ .* λ, σλ .* λ , λ)
-        χ2               = threaded_fnnls(basis, intrpfλ, intrpσλ)
+
+        #χ² curve
+        χ², Ω = threaded_fnnls(basis, intrpfλ, intrpσλ)
+        # predicted redshift ẑ  
+        ẑ     = wgrid.ζ[argmin(χ²)]
+
+        # decomposition coeffs 
+        ω     = Ω[argmin(χ²)]
+        # significance score \Delta\chi2
+        Δχ²_  = Δχ²(χ²)
+        # Robustness metric R
+        R_    = R(χ²)
+        
+        dset = Dict( "chi2"   => χ², "omega_hat"  => ω, "z_hat"  => ẑ, "dchi2"  => Δχ²_, "R"      => R_ )
 
         if isfile(output_path)
             h5open(output_path, "r+") do file
-                write(file,data.ids[i] , χ2)
+                grp = create_group(file, data.ids[i])
+                for (key,value) in dset
+                    write(grp, key, value)
+                end
+                #write(file, data.ids[i], collect((χ², ω, ẑ, Δχ²_,R_)) )
             end
         else
             h5open(output_path, "w") do file
-                write(file, data.ids[i], χ2)
+                grp = create_group(file, data.ids[i])
+                for (key,value) in dset
+                    write(grp, key, value)
+                end
+                #write(file, data.ids[i], collect((χ², ω, ẑ, Δχ²_,R_)))
             end
         end
     end
 end
 
+function χfits(fits_path::String, DataExtName::Union{String, Int}, StatExtName::Union{String, Int}; output_path::String = nothing)
+    
+    wgrid = Γgrid()
+    basis = Basis()
+    data = leggere_fits(fits_path; DataExtName = DataExtName, StatExtName = StatExtName)
+    
+    if isnothing(output_path)
+        output_path = joinpath( @__DIR__, "../output/results/chi2_files/chi2_$(now).h5")
+    end
+
+    if isfile(output_path)
+        @warn "Output path,  a file with the same name already exists!"
+    end
+    
+    n = length(data.flux)
+
+    @showprogress for i in 1:n
+
+        fλ = data.flux[i]
+        σλ = data.sdev[i]         
+        λ  = data.awave[i]
+
+        intrpfλ, intrpσλ = interpolate(basis, fλ .* λ, σλ .* λ , λ)
+
+        #χ² curve
+        χ², Ω = threaded_fnnls(basis, intrpfλ, intrpσλ)
+        # predicted redshift ẑ  
+        ẑ     = wgrid.ζ[argmin(χ²)]
+
+        # decomposition coeffs 
+        ω     = Ω[argmin(χ²)]
+        # significance score \Delta\chi2
+        Δχ²_  = Δχ²(χ²)
+        # Robustness metric R
+        R_    = R(χ²)
+
+        dset = Dict( "chi2"   => χ², "omega_hat"  => ω, "z_hat"  => ẑ, "dchi2"  => Δχ²_, "R"      => R_ )
+
+        if isfile(output_path)
+            h5open(output_path, "r+") do file
+                grp = create_group(file, data.ids[i])
+                for (key,value) in dset
+                    write(grp, key, value)
+                end
+                #write(file, data.ids[i], collect((χ², ω, ẑ, Δχ²_,R_)) )
+            end
+        else
+            h5open(output_path, "w") do file
+                grp = create_group(file, data.ids[i])
+                for (key,value) in dset
+                    write(grp, key, value)
+                end
+                #write(file, data.ids[i], collect((χ², ω, ẑ, Δχ²_,R_)))
+            end
+        end
+    end
+end
+
+function χfits(wgrid::Γgrid, basis::Basis, fits_path::String, DataExtName::Union{String, Int}, StatExtName::Union{String, Int}; output_path::String = nothing)
+    
+    data = leggere_fits(fits_path; DataExtName = DataExtName, StatExtName = StatExtName)
+
+    if isnothing(output_path)
+        output_path = joinpath( @__DIR__, "../output/results/chi2_files/chi2_$(now).h5")
+    end
+
+    if isfile(output_path)
+        @warn "Output path,  a file with the same name already exists!"
+    end
+    
+    n = length(data.flux)
+
+    @showprogress for i in 1:n
+
+        fλ = data.flux[i]
+        σλ = data.sdev[i]         
+        λ  = data.awave[i]
+
+        intrpfλ, intrpσλ = interpolate(basis, fλ .* λ, σλ .* λ , λ)
+
+        #χ² curve
+        χ², Ω = threaded_fnnls(basis, intrpfλ, intrpσλ)
+        # predicted redshift ẑ  
+        ẑ     = wgrid.ζ[argmin(χ²)]
+
+        # decomposition coeffs 
+        ω     = Ω[argmin(χ²)]
+        # significance score \Delta\chi2
+        Δχ²_  = Δχ²(χ²)
+        # Robustness metric R
+        R_    = R(χ²)
+
+        dset = Dict( "chi2"   => χ², "omega_hat"  => ω, "z_hat"  => ẑ, "dchi2"  => Δχ²_, "R"      => R_ )
+
+        if isfile(output_path)
+            h5open(output_path, "r+") do file
+                grp = create_group(file, data.ids[i])
+                for (key,value) in dset
+                    write(grp, key, value)
+                end
+                #write(file, data.ids[i], collect((χ², ω, ẑ, Δχ²_,R_)) )
+            end
+        else
+            h5open(output_path, "w") do file
+                grp = create_group(file, data.ids[i])
+                for (key,value) in dset
+                    write(grp, key, value)
+                end
+                #write(file, data.ids[i], collect((χ², ω, ẑ, Δχ²_,R_)))
+            end
+        end
+    end
+end
 
 """
     χcube(path::String, save_path::Union{String, Nothing}; kwargs...)
@@ -248,7 +450,7 @@ Author(s)
 =========
 B.Masten
 
-See also `χloop`
+See also `χfits`
 """
 function χcube(path::String, save_path::Union{String, Nothing}; kwargs...)
     
