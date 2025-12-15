@@ -1,4 +1,4 @@
-using Statistics, HDF5
+using LinearAlgebra, Statistics, HDF5, Base.Threads
 
 """
     Γgrid(; λmin = 4500f0, λmax = 9350f0, δλ = 1.25f0,
@@ -6,19 +6,13 @@ using Statistics, HDF5
 
 Description
 ============
-
-Creates a rest-frame log-wavelength grid regularly spaced. And provides
+Creates a rest-frame log-wavelength grid with uniform spacing. It also provides
 the test redshifts vector. All needed arguments to initialize this struct
 have default values, so that, one can get the grid without specifying any
-argument. Note that the resolution `δΓ` of the grid is not an argument, if one
-wants to play with this parameter you have to change the code. `δΓ` is calculated 
-as the mean resolution of the rest-frame wavelength grid not regularly spaced:
-log10(min observed wavelength/ (1+maximum redshift) : instrument resolution / (1+maximum redshift)):
-maximum observed wavelength.
+argument.
 
 Arguments
 ==========
-
 - **`λmin ::Float32 = 4500`**   : MUSE minimal observed wavelength in Å
 - **`λmax ::Float32 = 9350`**   : MUSE maximal observed wavelength in Å
 - **`δλ   ::Float32 = 1.25`**   : MUSE spectral resolution in Å
@@ -40,9 +34,17 @@ Examples
 ========
     # to get the rest-frame log-wavelength grid just run
     Γ = Γgrid().Γ
+!!! note
+    The resolution `δΓ` of the grid is not an argument, if one wants to play with this parameter you have to change the code. `δΓ` is calculated 
+    as the mean resolution of the following grid:
+    ` \\mathrm{mean}\\!\\left( 
+        \\log \\lambda_{\\rm obs,min} / (1 + z_{\\rm max}) 
+        : \\delta\\lambda / (1 + z_{\\rm max}) 
+        : \\lambda_{\\rm obs,max}
+      \\right) `
 
 """
-struct Γgrid
+mutable struct Γgrid
 
     λmin :: Float32
     λmax :: Float32
@@ -59,17 +61,15 @@ struct Γgrid
     Γ  :: Vector{Float32} 
     ζ  :: Vector{Float32}
 
-    function Γgrid(;λmin = 4500f0, λmax = 9350f0, δλ = 1.25f0,
-                    ζmin = 0f0,    ζmax = 7f0,    δζ = 0.001f0)
-        
-        Γmin  = log10(λmin/(1+ζmax))
+    function Γgrid(;λmin = 4600f0, λmax = 9350f0, δλ = 1.25f0,
+                    ζmin = 0f0, ζmax = 6.7f0, δζ = 0.0005f0)
+        # edges are hard coded, because the full rest frame grid should always be the same
+        Γmin  = log10(4500f0/(1f0 + 7f0))
         Γmax  = log10(λmax)
 
-        βgrid = log10.(collect(λmin/(1+ζmax):δλ/(1+ζmax):λmax))
-        
+        βgrid = log10.(collect(4500f0/(1f0 + 7f0): δλ/(1f0 +7f0): λmax))        
         δΓ = sum(βgrid[2:end] .- βgrid[1:end-1])/length(βgrid)
-        #δΓ = Statistics.quantile((βgrid[2:end] .- βgrid[1:end-1]), 0.75)
-        #δΓ =4f-5;#maximum((βgrid[2:end] .- βgrid[1:end-1]))
+
         ζ = collect(Float32, ζmin:δζ:ζmax)
         Γ = collect(Float32, Γmin:δΓ:Γmax)
         
@@ -84,75 +84,75 @@ end
 Description
 ============
 This struct loads the basis vectors matrix H and pre-computes several matricial products and stores them in a julia Struct.
-This storage allows to save computational ressources and speed the code. No arguments are needed to initialize this struct.
-By default it loads a rank 10 NMF basis vectors obtained using a sequentail nearly-NMF on ~7000 galaxy spectra
+This storage allows to save computational ressources and speed up the code. By default it loads a rank 10 NMF basis vectors
+obtained using a sequential nearly-NMF carried on ~7000 MUSE galaxy spectra
 
 Arguments
 ==========
-None
+-**`wgrid  :: Γgrid`** : rest-frame grid Struct
 
-Details
-=======
-
+Optional arguments
+==================
+-**`rank  :: Int`**   : rank of the basis you want to use, default to 10. Rank ∈ [6, 14]  
 """
 struct Basis
-
     H       :: Matrix{Float32}   # Full basis vectors matrix
-    Ht      :: Matrix{Float32}   # Transposed basis matrix
-    k       :: Int32             # Rank of H
+    Hᵀ      :: Matrix{Float32}   # Transposed basis matrix
+    HHᵀᵢ    :: Vector{Matrix{Float32}}
+    Hᵢ      :: Vector{Matrix{Float32}}
     
-    HHti    :: Vector{Matrix{Float32}}
-    Hi      :: Vector{Matrix{Float32}}
-    
-    λinterp :: Matrix{Float32}
-    
-    l       :: Int32
-    n       :: Int32
-    
-    
+    Λ       :: Matrix{Float32} # rest wavelengths array
 
-    function Basis()
-
-        grid = Γgrid()
-        n           = length(grid.ζ)
-        script_dir = @__DIR__
+    k       :: Int             # Rank of H
+    l       :: Int             # spectral dim of basis vectors
+    n       :: Int             # number of test redshifts
+     
+    function Basis(wgrid::Γgrid; rank::Int = 10)
         
+        if (rank < 6) || (rank > 14)
+            rank = 10
+            @warn ("⚠️ rank ∈ [6, 14], provided value for the rank is outside these limits, defaulting rank to 10")
+        end
+
+        script_dir  = @__DIR__
+        path = joinpath(script_dir, "../data/basis_vectors/H_2p170461fm5_0p8X.h5")
+
         # Load basis matrix 
-        Hpath = joinpath(script_dir, "../data/basis_vectors/H_2p170461fm5_0p8X.h5")
         H = try
-            h5open(Hpath, "r") do file
-                read(file, "rank_10")  # Ensure this returns Matrix{Float32}
+            h5open(path, "r") do file
+                read(file, "rank_$rank")  # Ensure this returns Matrix{Float32}
             end
         catch err
             error("Failed to load H: ", err)
         end
+        # mask a blended feature in H
+        H[2, 8424: 8544] .= 0f0
         
-        Ht = transpose(H) 
+        # clip subnormal values --> cause performance bottlneck
+        @. H = ifelse(issubnormal(H), 0f0, H)
+
+        Hᵀ = transpose(H)
+        
+        n = Int(length(wgrid.ζ))
         k = Int(size(H, 1))
+        l = Int(floor.((log10.(wgrid.λmax) - log10.(wgrid.λmin)) / wgrid.δΓ)) 
+        
+        λₛ       = log10.(wgrid.λmin ./ (1 .+ wgrid.ζ))
+        iₛ       = Int.(floor.((λₛ .- wgrid.Γmin) ./ wgrid.δΓ))
 
-        l    = Int32(floor.((log10.(grid.λmax) - log10.(4700)) / grid.δΓ)) 
-        λstrt       = log10.(4700f0 ./ (1 .+ grid.ζ))
-        istrt       = Int32.(floor.((λstrt .- grid.Γmin) ./ grid.δΓ))
+        HHᵀᵢ= Vector{Matrix{Float32}}(undef, n)
+        Hᵢ  = Vector{Matrix{Float32}}(undef, n)
 
-        HHti= Vector{Matrix{Float32}}(undef, n)
-        Hi  = Vector{Matrix{Float32}}(undef, n)
-
-        Threads.@threads for i in axes(istrt,1)
-            temp = copy(H[ :, istrt[i]:istrt[i] + l -1])
-            
-            for j in eachindex(temp)
-                if issubnormal(temp[j])
-                    temp[j] = 0.0f0
-                end
-            end
-            
-            Hi[i]    = temp
-            HHti[i]  = H[:, istrt[i]:istrt[i] + l] * Ht[istrt[i]:istrt[i] + l, :]
+        @views @threads for j in axes(iₛ,1)
+            Hₜ      = H[:, iₛ[j]:iₛ[j] + l - 1]
+            Hᵢ[j]   = Hₜ
+            HHᵀᵢ[j] = similar(H, k, k)
+            mul!(HHᵀᵢ[j], Hₜ, Transpose(Hₜ))  # in-place, avoids temporary matrix
+            #H[:, iₛ[j]:iₛ[j] + l] * Hᵀ[iₛ[j]:iₛ[j] + l, :]
         end
 
         #interpolation basis
-        λinterp = transpose(collect(Float32, log10(4700): grid.δΓ : grid.Γmax - grid.δΓ)) .- log10.(1 .+ grid.ζ)
-        # Create instance
-        new(H, Ht, k, HHti, Hi, λinterp, l,  n)
+        Λ = (log10(wgrid.λmin).+ (0:(l-1)) .* wgrid.δΓ)' .- log10.(1 .+ wgrid.ζ)
+        new(H, Hᵀ, HHᵀᵢ, Hᵢ, Λ, k, l, n)
     end
 end

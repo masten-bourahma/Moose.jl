@@ -1,42 +1,52 @@
-using Base.Threads, Dates
+using Base.Threads, Dates, LinearAlgebra
 using ProgressMeter: @showprogress
 
 """
-    interpolate( basis::Basis, fλ::Vector{Float32}, σλ::Vector{Float32}, λ::Vector{Float32}; extrpfλ = 0.0f0, extrpσλ = 1f6)
+    interpolate( basis::Basis, f::Vector{Float32}, σ::Vector{Float32}, λ::Vector{Float32}; fₓ = 0.0f0, σₓ = 1f6)
 
 Description
 ============
-This function takes three vectors: flux (fλ), standard deviations (σλ) and observed wavelengths (λ), it interpolates 
-the flux and std vectors to the rest wavelength grid assuming redshift 0. (shifting is captured in gram matrices stored in basis Struct)
+This function takes an instance of the Basis Struct and three vectors: fluxes (f), standard deviations (σ) and observed wavelengths (λ), it interpolates 
+the flux and std vectors to the rest wavelength grid assuming a redshift of 0.
     
 Arguments
 ==========
 - **`basis ::Basis`**             : Basis Struct
-- **`fλ    ::Vector{Float32}`**   : Observed flux densities
-- **`σλ    ::Vector{Float32}`**   : Flux associated standard deviations
+- **`f     ::Vector{Float32}`**   : Observed flux densities
+- **`σ     ::Vector{Float32}`**   : Flux associated standard deviations
 - **`λ     ::Vector{Float32}`**   : Observed wavelengths
-
-- **`extrpfλ ::Float32 = 0f0`**   : Extrapolation value for fluxes
-- **`extrpσλ ::Float32 = 1f6`**   : Extrapolation value for standard deviations
+- **`fₓ    ::Float32 = 0f0`**   : Extrapolation value for fluxes
+- **`σₓ    ::Float32 = 1f6`**   : Extrapolation value for standard deviations
 None
 
 returns
 =======
-- **`intrpfλ    ::Vector{Float32}`**   : Interpolated flux densities
-- **`intrpσλ    ::Vector{Float32}`**   : Interpolated standard deviations
+- **`fʳ    ::Vector{Float32}`**   : Interpolated flux densities
+- **`σʳ    ::Vector{Float32}`**   : Interpolated standard deviations
 
-Details
-=======
+See also
+========
+`interpolate!()`, works similarly, the difference is that `interpolate!` accepts two additional
+arguments, `fʳ` and `σʳ`, which are the vectors of interpolated flux densities and standard deviations. Sizes of these
+vectors are known, so one can pass an initialization of them (e.g. with zeros) and `interpolate!` will fill them.
+This is helpful because it avoids reallocations.
 
+Benchmark
+=========
+```julia
+using BenchmarkTools
+@btime interpolate!(basis, f, σ, λ, fʳ , σʳ)
+233.140 μs (173 allocations: 32.38 KiB)
+```
 """
-function interpolate( basis::Basis, fλ::Vector{Float32}, σλ::Vector{Float32}, λ::Vector{Float32};
-                      extrpfλ::Float32 = 0.0f0, extrpσλ::Float32 = 1f6)
+function interpolate(basis::Basis, f::Vector{Float32}, σ::Vector{Float32}, λ::Vector{Float32};
+                      fₓ::Float32 = 0.0f0, σₓ::Float32 = 1f6)
     
-    Λ  = basis.λinterp
+    Λ₁  = @view basis.Λ[1,:]
     l  = basis.l
 
-    intrpfλ = zeros(Float32, l)
-    intrpσλ = zeros(Float32, l)
+    fʳ = zeros(Float32, l)
+    σʳ = zeros(Float32, l)
 
     logλ = log10.(λ)
     lwbn = logλ[1]
@@ -44,72 +54,118 @@ function interpolate( basis::Basis, fλ::Vector{Float32}, σλ::Vector{Float32},
 
     @inbounds @threads for j in 1:l 
         
-        λj = Λ[1, j]
+        logλⱼ = Λ₁[j]
+        # Left or right extrapolation
+        if logλⱼ < lwbn || logλⱼ > upbn
+            fʳ[j] = fₓ
+            σʳ[j] = σₓ
+            continue
+        end
+        # Binary search for interpolation index
+        idx = searchsortedfirst(logλ, logλⱼ)
+        idx = max(1, min(idx - 1, l-1))  # Clamp to valid range
+
+        # Direct memory access
+        logλ₁ = logλ[idx]
+        logλ₂ = logλ[idx + 1]
+            
+        inv_denom = 1 / (logλ₂ - logλ₁)
+        p = (logλⱼ - logλ₁) * inv_denom
+        
+        λᵢ     = λ[idx]
+        #f₁, f₂ = f[idx]*λᵢ, f[idx + 1]*λᵢ
+        #σ₁, σ₂ = σ[idx]*λᵢ, σ[idx + 1]*λᵢ
+        
+        # Fused multiply-add operations
+        fʳ[j] = muladd(p, f[idx + 1]*λᵢ - f[idx]*λᵢ, f[idx]*λᵢ)
+        σʳ[j] = muladd(p, σ[idx + 1]*λᵢ - σ[idx]*λᵢ, σ[idx]*λᵢ)
+    end
+    
+    return fʳ, σʳ
+end
+function interpolate!(basis::Basis, f::Vector{Float32}, σ::Vector{Float32}, λ::Vector{Float32},
+                       fʳ::Vector{Float32}, σʳ::Vector{Float32};
+                       fₓ::Float32 = 0.0f0, σₓ::Float32 = 1f6)
+    
+    Λ₁  = @view basis.Λ[1,:]
+    l = basis.l
+
+    logλ = log10.(λ)
+    lwbn = logλ[1]
+    upbn = logλ[end]
+
+    @inbounds @threads for j in 1:l 
+        
+        logλⱼ = Λ₁[j]
             
         # Left or right extrapolation
-        if λj < lwbn || λj > upbn
-            intrpfλ[j] = extrpfλ
-            intrpσλ[j] = extrpσλ
+        if logλⱼ < lwbn || logλⱼ > upbn
+            fʳ[j] = fₓ
+            σʳ[j] = σₓ
             continue
         end
 
         # Binary search for interpolation index
-        idx = searchsortedfirst(logλ, λj)
+        idx = searchsortedfirst(logλ, logλⱼ)
         idx = max(1, min(idx - 1, l-1))  # Clamp to valid range
 
         # Direct memory access
-        λ1 = logλ[idx]
-        λ2 = logλ[idx + 1]
+        logλ₁ = logλ[idx]
+        logλ₂ = logλ[idx + 1]
             
-        inv_denom = 1 / (λ2 - λ1)
-        p = (λj - λ1) * inv_denom
+        inv_denom = 1 / (logλ₂ - logλ₁)
+        p = (logλⱼ - logλ₁) * inv_denom
             
-        fλ1, fλ2 = fλ[idx], fλ[idx + 1]
-        σλ1, σλ2 = σλ[idx], σλ[idx + 1] 
+        λᵢ     = λ[idx]
+        #f₁, f₂ = f[idx]*λᵢ, f[idx + 1]*λᵢ
+        #σ₁, σ₂ = σ[idx]*λᵢ, σ[idx + 1]*λᵢ
         
         # Fused multiply-add operations
-        intrpfλ[j] = muladd(p, fλ2 - fλ1, fλ1)
-        intrpσλ[j] = muladd(p, σλ2 - σλ1, σλ1)
+        fʳ[j] = muladd(p, f[idx + 1]*λᵢ - f[idx]*λᵢ, f[idx]*λᵢ)
+        σʳ[j] = muladd(p, σ[idx + 1]*λᵢ - σ[idx]*λᵢ, σ[idx]*λᵢ)
     end
-    
-    return intrpfλ, intrpσλ
 end
 
+
 """
-    threaded_fnnls(basis::Basis, fλ::Vector{Float32}, σλ::Vector{Float32})
+    flow(basis::Basis, f::Vector{Float32}, σ::Vector{Float32})
 
 Description
 ===========
-This function executes a multi-threaded calculation of the chi-square curve. For each redshift (each gram matrices Hi & HHti
-in basis Struct), it reconstructs an input vector fλ with basis vectors using Fast Non-Negative Least Squares (FNNLS),
-then quantifies the reconstruction error using a χ2 metric
+This function executes a multi-threaded calculation of the chi-square curve. For each redshift (each gram matrices Hᵢ & HHᵀᵢ
+in basis Struct), it reconstructs an input vector f with basis vectors using a Fast Non-Negative Least Squares (FNNLS),
+then quantifies the reconstruction error using a χ² metric
 
 #put definition of chi2 here        grid  = Γgrid()
 
-
 Arguments
 =========
-- **`basis ::Basis`**            : Basis Struct
-- **`fλ    ::Vector{Float32}`**  : Input vector (flux densities)
-- **`σλ    ::Vector{Float32}`**  : Error vector (standard deviations)
+- **`basis ::Basis`**           : Basis Struct
+- **`f    ::Vector{Float32}`**  : (interpolated) flux densities vector
+- **`σ    ::Vector{Float32}`**  : (interpolated) standard deviations vector
 
 Returns
 =======
-- **`χ2    ::Vector{Float32}`**  : χ2 curve, χ2 metric at each test redshift
+- **`χ²    ::Vector{Float32}`**  : χ² curve
+
+See also
+========
+`flow!()`
 
 Example
 =======
 ```julia
 # 1. Initialize the Basis Struct
-basis = Basis()
-
+wgrid = Γgrid(λmin = 4700f0, δζ = 0.0005f0)
+basis = Basis(wgrid)
 # 2. Interpolate flux densities fλ and σλ to rest frame grid
-intrpfλ, intrpσλ = interpolate(b, fλ .* λ, σλ .* λ, λ)
+fʳ , σʳ = interpolate(basis, f, σ, λ)
+# 3. Run flow to get the chi2 curve
+χ² = threaded_fnnls(basis, fʳ , σʳ)
+#4. to get also the coeffs
+χ², Ω = threaded_fnnls(basis, fʳ , σʳ, true)
 
-# 3. Run threaded_nnls to get the chi2 curve
-χ2 = threaded_fnnls(b, intrpfλ, intrpσλ)
 ```
-
 Tips
 ====
 To set the number of threads in julia, add this line to your linux/macos bash
@@ -117,45 +173,173 @@ To set the number of threads in julia, add this line to your linux/macos bash
 export JULIA_NUM_THREADS=4
 ```
 """
-function threaded_fnnls(basis::Basis, fλ::Vector{Float32}, σλ::Vector{Float32})
-    
-    n, l  = basis.n, basis.l
-    
-    χ² = Vector{Float32}(undef, n)
-    Ω  = Vector{Vector{Float32}}(undef, n)
+function flow(basis::Basis, f::Vector{T}, σ::Vector{T}) where{T}
+        
+    n,l,k = basis.n, basis.l,basis.k
+    nthreads   = Threads.nthreads()
+    chunk_size = cld(n, nthreads)
 
-    f̂λ_threads     = [Vector{Float32}(undef, l) for _ in 1:Threads.nthreads()]
+    # Preallocate workspace for each thread
+    f_threads  = [Vector{T}(undef,l) for _ in 1:nthreads]
+    ω_threads  = [Vector{T}(undef,k) for _ in 1:nthreads]
 
+    # Preallocate χ² vector
+    χ² = Vector{T}(undef, n)
 
-    @threads for i in 1:n
+    @threads for t in 1:nthreads
+        fʰ  = f_threads[t]
+        ωʰ  = ω_threads[t]
 
-        thread_id = Threads.threadid()
-        f̂λ        = f̂λ_threads[thread_id]
-        Hi        =  basis.Hi[i]
+        i_start = (t-1)*chunk_size + 1
+        i_end   = min(t*chunk_size, basis.n)
 
-        @inbounds ω = fnnls(basis.HHti[i],  Hi * fλ)
-        mul!(f̂λ, transpose(Hi), vec(ω))
+        @inbounds for i in i_start:i_end
+            mul!(ωʰ, basis.Hᵢ[i], f)
+            ω = fnnls(basis.HHᵀᵢ[i], ωʰ)
+            mul!(fʰ, Transpose(basis.Hᵢ[i]), ω)
 
-        total_sum = 0.0f0
-        @simd for j in 1:l
-            @inbounds total_sum += ((f̂λ[j] - fλ[j])/σλ[j])^2
+            Σ = 0.0f0
+            @simd for j in 1:l
+                Σ += ((fʰ[j] - f[j]) / σ[j])^2
+            end
+            χ²[i] = Σ / l
         end
-
-        χ²[i] = total_sum / l
-        Ω[i]  = ω
-
     end
+    return χ²
+end
+function flow(basis::Basis, f::Vector{T}, σ::Vector{T}, coeffs::Bool) where{T}
+    n,l,k = basis.n, basis.l,basis.k
+    nthreads   = Threads.nthreads()
+    chunk_size = cld(n, nthreads)
 
+    # Preallocate workspace for each thread
+    f_threads  = [Vector{T}(undef,l) for _ in 1:nthreads]
+    ω_threads  = [Vector{T}(undef,k) for _ in 1:nthreads]
+    
+    # Preallocate χ² & Ω vectors
+    χ² = Vector{T}(undef, n)
+    Ω = Matrix{T}(undef,k,n)
+
+    @threads for t in 1:nthreads
+        fʰ  = f_threads[t]
+        ωʰ = ω_threads[t]
+
+        i_start = (t-1)*chunk_size + 1
+        i_end   = min(t*chunk_size, basis.n)
+
+        @inbounds for i in i_start:i_end
+            mul!(ωʰ, basis.Hᵢ[i], f)
+            ω = fnnls(basis.HHᵀᵢ[i], ωʰ)
+            mul!(fʰ, Transpose(basis.Hᵢ[i]), ω)
+
+            Σ = 0.0f0
+            @simd for j in 1:l
+                Σ += ((fʰ[j] - f[j]) / σ[j])^2
+            end
+            χ²[i] = Σ / l
+            Ω[:,i] .= ω
+        end
+    end
     return χ², Ω
+end
+function flow!(basis::Basis, f::Vector{T}, σ::Vector{T}, χ²::Vector{T}) where{T}
+    n,l,k = basis.n, basis.l,basis.k
+    nthreads   = Threads.nthreads()
+    chunk_size = cld(n, nthreads)
+
+    # Preallocate workspace for each thread
+    f_threads  = [Vector{T}(undef,l) for _ in 1:nthreads]
+    ω_threads  = [Vector{T}(undef,k) for _ in 1:nthreads]
+
+    @threads for t in 1:nthreads
+        fʰ  = f_threads[t]
+        ωʰ = ω_threads[t]
+
+        i_start = (t-1)*chunk_size + 1
+        i_end   = min(t*chunk_size, basis.n)
+
+        @inbounds for i in i_start:i_end
+            mul!(ωʰ, basis.Hᵢ[i], f)
+            ω = fnnls(basis.HHᵀᵢ[i], ωʰ)
+            mul!(fʰ, Transpose(basis.Hᵢ[i]), ω)
+
+            Σ = 0.0f0
+            @simd for j in 1:l
+                Σ += ((fʰ[j] - f[j]) / σ[j])^2
+            end
+            χ²[i] = Σ / l
+        end
+    end
+end
+function flow!(basis::Basis, f::Vector{T}, σ::Vector{T}, χ²::Vector{T}, Ω::Matrix{T}) where{T}
+    n,l,k = basis.n, basis.l,basis.k
+    nthreads   = Threads.nthreads()
+    chunk_size = cld(n, nthreads)
+
+    # Preallocate workspace for each thread
+    f_threads  = [Vector{T}(undef,l) for _ in 1:nthreads]
+    ω_threads  = [Vector{T}(undef,k) for _ in 1:nthreads]
+
+    @threads for t in 1:nthreads
+        fʰ  = f_threads[t]
+        ωʰ = ω_threads[t]
+
+        i_start = (t-1)*chunk_size + 1
+        i_end   = min(t*chunk_size, basis.n)
+
+        @inbounds for i in i_start:i_end
+            mul!(ωʰ, basis.Hᵢ[i], f)
+            ω = fnnls(basis.HHᵀᵢ[i], ωʰ)
+            mul!(fʰ, Transpose(basis.Hᵢ[i]), ω)
+
+            Σ = 0.0f0
+            @simd for j in 1:l
+                Σ += ((fʰ[j] - f[j]) / σ[j])^2
+            end
+            χ²[i] = Σ / l
+            Ω[:,i] .= ω
+        end
+    end
+end
+function flow!(basis::Basis, f::Vector{T}, σ::Vector{T}, fᵃ::Vector{T}, χ²::Vector{T}, Ω::Matrix{T}) where{T}
+    n,l,k = basis.n, basis.l,basis.k
+    nthreads   = Threads.nthreads()
+    chunk_size = cld(n, nthreads)
+
+    # Preallocate workspace for each thread
+    f_threads  = [Vector{T}(undef,l) for _ in 1:nthreads]
+    ω_threads  = [Vector{T}(undef,k) for _ in 1:nthreads]
+
+    @threads for t in 1:nthreads
+        fʰ  = f_threads[t]
+        ωʰ = ω_threads[t]
+
+        i_start = (t-1)*chunk_size + 1
+        i_end   = min(t*chunk_size, basis.n)
+
+        @inbounds for i in i_start:i_end
+            H₁ = vcat(transpose(fᵃ), basis.Hᵢ[i])
+            mul!(ωʰ, H₁, f)
+            ω = fnnls(H₁ * transpose(H₁), ωʰ)
+            mul!(fʰ, transpose(H₁), ω)
+
+            Σ = 0.0f0
+            @simd for j in 1:l
+                Σ += ((fʰ[j] - f[j]) / σ[j])^2
+            end
+            χ²[i] = Σ / l
+            Ω[:,i] .= ω
+        end
+    end
 end
 
 """
-    χfits(wgrid::Γgrid, basis:Basis, data; output_path::String = nothing)
+    flow(wgrid::Γgrid, basis:Basis, data; output_path::String = nothing)
 
 Description
 ===========
-Runs a threaded FNNLS on a set of spectra loaded into a data Struct apriori and stored in data. Resulting chi2 curves are
-saved into an h5 file, whose path and name are specified by setting the keyword argument 'output_path' 
+Runs a threaded FNNLS on a set of spectra loaded into a NamedTuple apriori (`data`). Resulting χ² curves are
+saved into an `.h5` file, whose path and name are specified by setting the keyword argument `output_path`. 
 
 Arguments
 =========
@@ -170,57 +354,62 @@ nothing
 
 Methods
 =======
-- `χfits(data; output_path::String = nothing)`: `wgrid` and `basis` are instantiated within the method.
-- `χfits(fits_path::String, DataExtName::Union{String, Int}, StatExtName::Union{String, Int}; output_path::String = nothing)`: `wgrid` and `basis` are instantiated within the method, the data is loaded within the function using the provided `fits_path` and the extensions: `DataExtName`, `StatExtName`.
-- `χfits(wgrid::Γgrid, basis::Basis, fits_path::String, DataExtName::Union{String, Int}, StatExtName::Union{String, Int}; output_path::String = nothing)`: the data  is loaded within the function using the provided `fits_path` and the extensions: `DataExtName`, `StatExtName`.
+- `flow(data; output_path::String = nothing)`: `wgrid` and `basis` are instantiated within the method.
+- `flow(fits_path::String, DataExtName::Union{String, Int}, StatExtName::Union{String, Int}; output_path::String = nothing)`: `wgrid` and `basis` are instantiated within the method, the data is loaded within the function using the provided `fits_path` and the extensions: `DataExtName`, `StatExtName`.
+- `flow(wgrid::Γgrid, basis::Basis, fits_path::String, DataExtName::Union{String, Int}, StatExtName::Union{String, Int}; output_path::String = nothing)`: the data  is loaded within the function using the provided `fits_path` and the extensions: `DataExtName`, `StatExtName`.
 
 Example
 =======
 ```julia
 # 1. Initialize Basis Struct
-wgrid = Γgrid()
-basis = Basis()
-
+wgrid = Γgrid(;λmin, δζ)
+basis = Basis(wgrid)
 # 2. read data from fits files
-data = leggere_fits("../data/spectra_sample")
-
-#3. Specify output file path and run χloop
-my_chi2file = "../output/chi2_files/chi2_moose.h5"
-χfits(wgrid, basis, data; output_path = my_chi2file)
+data = leggere("../data/spectra_sample", Val(:fits))
+#3. Specify output file path and run flow
+chi2file = "../output/chi2_files/chi2_moose.h5"
+flow(wgrid, basis, data; output_path = chi2file)
 ```
 """
-function χfits(wgrid::Γgrid, basis::Basis, data; output_path::String = nothing)
+function flow(wgrid::Γgrid, basis::Basis, data; output_path::Union{String,Nothing}= nothing)
 
     if isnothing(output_path)
         output_path = joinpath( @__DIR__, "../output/results/chi2_files/chi2_$(now).h5")
     end
 
     if isfile(output_path)
-        @warn "Output path,  a file with the same name already exists!"
+        @warn "Output path, a file with the same name already exists!"
     end
-    
-    n = length(data.flux)
+    k,l,n = basis.k, basis.l, basis.n
+    fʳ = Vector{Float32}(undef, l)
+    σʳ = Vector{Float32}(undef, l)
+    χ² = Vector{Float32}(undef, n)
+    Ω  = Matrix{Float32}(undef, k, n)
 
-    @showprogress for i in 1:n
+    N = length(data.flux)
+
+    @showprogress for i in 1:N
         
-        fλ = data.flux[i]
-        σλ = data.sdev[i]         
-        λ  = data.awave[i]
+        f      = data.flux[i]
+        σ = data.sdev[i]         
+        λ = data.awave[i]
 
-        intrpfλ, intrpσλ = interpolate(basis, fλ .* λ, σλ .* λ , λ)
-        #χ² curve
-        χ², Ω = threaded_fnnls(basis, intrpfλ, intrpσλ)
+        interpolate!(basis, f, σ, λ, fʳ, σʳ)
+        flow!(basis, fʳ, σʳ, χ², Ω)
+        
         # predicted redshift ẑ  
-
-        ẑ     = wgrid.ζ[argmin(χ²)]
-        # decomposition coeffs 
-        ω     = Ω[argmin(χ²)]
-        # significance score \Delta\chi2
-        Δχ²_  = Δχ²(χ²)
-        # Robustness metric R
-        R_    = R(χ²)
+        ẑ = wgrid.ζ[argmin(χ²)]
         
-        dset = Dict( "chi2"   => χ², "omega_hat"  => ω, "z_hat"  => ẑ, "dchi2"  => Δχ²_, "R"      => R_ )
+        # decomposition coeffs @ ẑ
+        ω = Ω[:, argmin(χ²)]
+        
+        # significance score \Delta\chi2
+        Δ = Δχ²(χ²)
+        
+        # Robustness metric R
+        R_ = R(χ²)
+        
+        dset = Dict( "curve" => χ², "coeffs" => ω, "zhat" => ẑ, "dchi2"  => Δ, "R" => R_ )
 
         if isfile(output_path)
             h5open(output_path, "r+") do file
@@ -242,9 +431,10 @@ function χfits(wgrid::Γgrid, basis::Basis, data; output_path::String = nothing
     end
 end
 
-function χfits(data; output_path::String = nothing)
-    wgrid = Γgrid()
-    basis = Basis()
+function flow(data; output_path::Union{String,Nothing}= nothing, λmin::Float32=4700f0, δζ::Float32=0.0005f0)
+    
+    wgrid = Γgrid(;λmin, δζ)
+    basis = Basis(wgrid)
 
     if isnothing(output_path)
         output_path = joinpath( @__DIR__, "../output/results/chi2_files/chi2_$(now).h5")
@@ -254,29 +444,34 @@ function χfits(data; output_path::String = nothing)
         @warn "Output path,  a file with the same name already exists!"
     end
     
-    n = length(data.flux)
+    k,l,n = basis.k, basis.l, basis.n
+    fʳ = Vector{Float32}(undef, l)
+    σʳ = Vector{Float32}(undef, l)
+    χ² = Vector{Float32}(undef, l)
+    Ω  = Matrix{Float32}(undef, k,n)
 
-    @showprogress for i in 1:n
+    N = length(data.flux)
 
-        fλ = data.flux[i]
-        σλ = data.sdev[i]         
-        λ  = data.awave[i]
+    @showprogress for i in 1:N
+        
+        f      = data.flux[i]
+        σ = data.sdev[i]         
+        λ = data.awave[i]
 
-        intrpfλ, intrpσλ = interpolate(basis, fλ .* λ, σλ .* λ , λ)
+        interpolate!(basis, f, σ, λ, fʳ, σʳ)
+        flow!(basis, fʳ, σʳ, χ², Ω)
 
-        #χ² curve
-        χ², Ω = threaded_fnnls(basis, intrpfλ, intrpσλ)
         # predicted redshift ẑ  
         ẑ     = wgrid.ζ[argmin(χ²)]
 
         # decomposition coeffs 
         ω     = Ω[argmin(χ²)]
         # significance score \Delta\chi2
-        Δχ²_  = Δχ²(χ²)
+        Δ  = Δχ²(χ²)
         # Robustness metric R
         R_    = R(χ²)
         
-        dset = Dict( "chi2"   => χ², "omega_hat"  => ω, "z_hat"  => ẑ, "dchi2"  => Δχ²_, "R"      => R_ )
+        dset = Dict( "curve" => χ², "coeffs" => ω, "zhat" => ẑ, "dchi2"  => Δ, "R" => R_ )
 
         if isfile(output_path)
             h5open(output_path, "r+") do file
@@ -298,11 +493,12 @@ function χfits(data; output_path::String = nothing)
     end
 end
 
-function χfits(fits_path::String, DataExtName::Union{String, Int}, StatExtName::Union{String, Int}; output_path::String = nothing)
+function flow(fits_path::String, DataExtName::Union{String, Int}, StatExtName::Union{String, Int}; output_path::Union{String,Nothing}= nothing)
     
-    wgrid = Γgrid()
-    basis = Basis()
-    data = leggere_fits(fits_path; DataExtName = DataExtName, StatExtName = StatExtName)
+    wgrid = Γgrid(;λmin, δζ)
+    basis = Basis(wgrid)
+
+    data = leggere(fits_path, Val(:fits); DataExtName = DataExtName, StatExtName = StatExtName)
     
     if isnothing(output_path)
         output_path = joinpath( @__DIR__, "../output/results/chi2_files/chi2_$(now).h5")
@@ -312,29 +508,33 @@ function χfits(fits_path::String, DataExtName::Union{String, Int}, StatExtName:
         @warn "Output path,  a file with the same name already exists!"
     end
     
-    n = length(data.flux)
+    k,l,n = basis.k, basis.l, basis.n
+    fʳ = Vector{Float32}(undef, l)
+    σʳ = Vector{Float32}(undef, l)
+    χ² = Vector{Float32}(undef, l)
+    Ω  = Matrix{Float32}(undef, k,n)
 
-    @showprogress for i in 1:n
+    N = length(data.flux)
 
-        fλ = data.flux[i]
-        σλ = data.sdev[i]         
-        λ  = data.awave[i]
+    @showprogress for i in 1:N
+        
+        f      = data.flux[i]
+        σ = data.sdev[i]         
+        λ = data.awave[i]
 
-        intrpfλ, intrpσλ = interpolate(basis, fλ .* λ, σλ .* λ , λ)
+        interpolate!(basis, f, σ, λ, fʳ, σʳ)
+        flow!(basis, fʳ, σʳ, χ², Ω)
 
-        #χ² curve
-        χ², Ω = threaded_fnnls(basis, intrpfλ, intrpσλ)
         # predicted redshift ẑ  
         ẑ     = wgrid.ζ[argmin(χ²)]
 
         # decomposition coeffs 
         ω     = Ω[argmin(χ²)]
         # significance score \Delta\chi2
-        Δχ²_  = Δχ²(χ²)
+        Δ  = Δχ²(χ²)
         # Robustness metric R
         R_    = R(χ²)
-
-        dset = Dict( "chi2"   => χ², "omega_hat"  => ω, "z_hat"  => ẑ, "dchi2"  => Δχ²_, "R"      => R_ )
+        dset = Dict( "curve" => χ², "coeffs" => ω, "zhat" => ẑ, "dchi2"  => Δ, "R" => R_ )
 
         if isfile(output_path)
             h5open(output_path, "r+") do file
@@ -356,9 +556,9 @@ function χfits(fits_path::String, DataExtName::Union{String, Int}, StatExtName:
     end
 end
 
-function χfits(wgrid::Γgrid, basis::Basis, fits_path::String, DataExtName::Union{String, Int}, StatExtName::Union{String, Int}; output_path::String = nothing)
+function flow(wgrid::Γgrid, basis::Basis, fits_path::String, DataExtName::Union{String, Int}, StatExtName::Union{String, Int}; output_path::Union{String,Nothing}= nothing)
     
-    data = leggere_fits(fits_path; DataExtName = DataExtName, StatExtName = StatExtName)
+    data = leggere(fits_path, Val(:fits); DataExtName = DataExtName, StatExtName = StatExtName)
 
     if isnothing(output_path)
         output_path = joinpath( @__DIR__, "../output/results/chi2_files/chi2_$(now).h5")
@@ -368,30 +568,33 @@ function χfits(wgrid::Γgrid, basis::Basis, fits_path::String, DataExtName::Uni
         @warn "Output path,  a file with the same name already exists!"
     end
     
-    n = length(data.flux)
+    k,l,n = basis.k, basis.l, basis.n
+    fʳ = Vector{Float32}(undef, l)
+    σʳ = Vector{Float32}(undef, l)
+    χ² = Vector{Float32}(undef, l)
+    Ω  = Matrix{Float32}(undef, k,n)
 
-    @showprogress for i in 1:n
+    N = length(data.flux)
 
-        fλ = data.flux[i]
-        σλ = data.sdev[i]         
-        λ  = data.awave[i]
+    @showprogress for i in 1:N
+        
+        f      = data.flux[i]
+        σ = data.sdev[i]         
+        λ = data.awave[i]
 
-        intrpfλ, intrpσλ = interpolate(basis, fλ .* λ, σλ .* λ , λ)
-
-        #χ² curve
-        χ², Ω = threaded_fnnls(basis, intrpfλ, intrpσλ)
+        interpolate!(basis, f, σ, λ, fʳ, σʳ)
+        flow!(basis, fʳ, σʳ, χ², Ω)
         # predicted redshift ẑ  
         ẑ     = wgrid.ζ[argmin(χ²)]
 
         # decomposition coeffs 
         ω     = Ω[argmin(χ²)]
         # significance score \Delta\chi2
-        Δχ²_  = Δχ²(χ²)
+        Δ  = Δχ²(χ²)
         # Robustness metric R
         R_    = R(χ²)
 
-        dset = Dict( "chi2"   => χ², "omega_hat"  => ω, "z_hat"  => ẑ, "dchi2"  => Δχ²_, "R"      => R_ )
-
+        dset = Dict( "curve" => χ², "coeffs" => ω, "zhat" => ẑ, "dchi2"  => Δ, "R" => R_ )
         if isfile(output_path)
             h5open(output_path, "r+") do file
                 grp = create_group(file, data.ids[i])
@@ -413,7 +616,7 @@ function χfits(wgrid::Γgrid, basis::Basis, fits_path::String, DataExtName::Uni
 end
 
 """
-    χcube(path::String, save_path::Union{String, Nothing}; kwargs...)
+    flood(path::String, save_path::Union{String, Nothing}; kwargs...)
 
 Description
 ===========
@@ -445,49 +648,107 @@ Returns
 =======
 `nothing`
 
+Arguments
+=========
+- **`fits_path ::String`**     : path to the datacube `.fits` file
+- **`h5_path ::String`**       : Name of the stat extension
+- **`DataExtName ::String`**   : Name of the data extension
+- **`StatExtName ::String`**   : Name of the stat extension
+
 Author(s)
 =========
 B.Masten
-
-See also `χfits`
 """
-function χcube(path::String, save_path::Union{String, Nothing}; kwargs...)
+function flow(src::String; δζᵣ::Float32 = 0.0005f0)
     
-    if isnothing(save_path)
-        save_path = joinpath( @__DIR__, "../output/chi2_files/$(splitext(basename(path))[1])_chi2.h5")
+    @assert isfile(src) "🔴 File not found: $src"
+    dst = splitext(src)[1] * "_Moose.h5"
+    
+    if isfile(dst)
+        @warn("⚠️ File already exists @ the default path generated by `Moose.jl`;
+               `Moose.jl` will resume writing this file")
+    else
+        @warn("📄 File generated for the output! @ $(dst)")
     end
-    #h5key
-    h5key = splitext(basename(path))[1]
 
-    #instantiate the basis Struct
-    basis = Basis()
+    data, stat, metadata = leggere(src, Val(:h5))
+
+    N₁, N₂, N₃, λᵣ, δλ = metadata
+    λ = collect(Float32, λᵣ .+ (0:N₃-1) .* δλ)
     
-    # get cube data
-    data   = leggere_cube(path; kwargs...)
-    λ      = data.awave
-    nx, ny = size(data.flux)
+    wgrid  = Γgrid(λmin = λᵣ, δζ = δζᵣ)
+    basis  = Basis(wgrid)
 
-    χ2     = Array{Float32}(undef,(nx,ny,basis.n)) .* NaN32
+    output, iₜ, jₜ = awaken(dst, basis, wgrid, metadata)
 
-    for i in 1:nx
-        for j in 1:ny
-            if any(.!iszero.(data.flux[i,j,:]))
-                intrpfλ, intrpσλ = interpolate(basis, data.flux[i,j,:] .* λ, data.sdev[i,j,:] .* λ, λ)
-                χ2[i,j,:]       .= threaded_fnnls(basis, intrpfλ, intrpσλ)
-            else
-                χ2[i,j,:] .= NaN32
+    
+    #grp_spaxels = output["CHI2_SPAXELS"]
+    grp  = output["CHI2_3X3"]
+    #grp = output["CHI2_3X3GK"]
+
+
+    #kernel = [1f0/16f0  1f0/8f0  1f0/16f0;
+    #          1f0/8f0   1f0/4f0  1f0/8f0 ;
+    #          1f0/16f0  1f0/8f0  1f0/16f0]
+    
+    kernel = [1f0/9f0  1f0/9f0  1f0/9f0;
+              1f0/9f0  1f0/9f0  1f0/9f0;
+              1f0/9f0  1f0/9f0  1f0/9f0]          
+
+    stop = false 
+    fʳ = zeros(Float32, basis.l)
+    σʳ = zeros(Float32, basis.l)
+    χ² = Vector{Float32}(undef, basis.n)
+
+    @showprogress for i in iₜ:N₁
+        for j in jₜ:N₂
+            dset_name = nothing
+            try
+                dset_name = "$(i)_$(j)"
+                status, f, σ = scrub(data, stat, kernel, i, j, N₁, N₂, N₃)
+                if status === :good
+                    interpolate!(basis, f, σ, λ, fʳ, σʳ)
+                    flow!(basis, fʳ, σʳ, χ²)
+                    grp[dset_name] = χ²
+                else
+                    grp[dset_name] = NaN32
+                end
+
+            catch err 
+                if isa(err, InterruptException)
+                    println("🔴 Stop requested! `Moose.jl` will exit after current iteration...")
+                    stop = true
+                    if haskey(grp, dset_name)
+                        delete_object(grp, dset_name)
+                    end
+                    status, f, σ = scrub(data, stat, kernel, i, j, N₁, N₂, N₃)
+                    if status === :good
+                        interpolate!(basis, f, σ, λ, fʳ, σʳ)
+                        flow!(basis, fʳ, σʳ, χ²)
+                        grp[dset_name] = χ²
+                    else
+                        grp[dset_name] = NaN32
+                    end
+                else
+                    rethrow(err)
+                end
+            finally
+                delete_attribute(output, "j_t") 
+                attributes(output)["j_t"] = j + 1
+            end
+            
+            if stop
+                break 
             end
         end
 
-        if i % 5 == 0
-            println("row $(i) completed, ...")
-            h5open(save_path, "w") do file
-                write(file, h5key, χ2)
-            end
+        if stop
+            break 
         end
+        #update iₜ & jₜ attributes
+        jₜ = 1
+        delete_attribute(output, "i_t")
+        attributes(output)["i_t"] = i + 1 
     end
-
-    h5open(save_path, "w") do file
-        write(file, h5key, χ2)
-    end
+    close(output)
 end

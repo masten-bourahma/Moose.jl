@@ -7,16 +7,16 @@ include("strutture.jl")
 export Γgrid, Basis
 
 include("metrics.jl")
-export GF
+export GF, Δχ²
 
 include("fnnls.jl")
 export fnnls
 
+include("utils.jl")
 include("methods.jl")
-export interpolate, threaded_fnnls, χfits,  χcube
+export interpolate, interpolate!, flow, flow!
 
 include("leggere.jl")
-export leggere_fits, leggere_chifile, leggere_cube
-
+export leggere
 
 end
