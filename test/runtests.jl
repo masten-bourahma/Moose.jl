@@ -17,27 +17,6 @@ using Moose, Test
         @test basis.n == length(wgrid.ζ) 
     end
 
-    @testset "Test leggere.jl" begin
-        wgrid = Γgrid(λmin = 4700f0, δζ = 0.1f0)
-        basis = Basis(wgrid)
-
-        path = joinpath(@__DIR__, "../data/spectra_sample/")
-        data = leggere(path, Val(:fits))
-        @test length(data.flux) == 24
-
-        h5path  = joinpath(@__DIR__, "../output/chi2_files/chi2_testMoose.h5")
-        χdata   = leggere(h5path, Val(:h5))
-        @test length(χdata.ids) == 24
-
-        cube_data = leggere(joinpath(@__DIR__, "../data/cubes/DATACUBE_test.fits"), Val(:cube))
-        @test size(cube_data.flux) == (4,4,3721)
-        @test size(cube_data.sdev) == (4,4,3721)
-        @test any(.!iszero.(cube_data.flux[1,1,:]))
-        @test !any(isnan.(cube_data.sdev))
-        @test !any(isinf.(cube_data.sdev))        
-        @test !any(isnan.(cube_data.flux))
-    end
-
     @testset "Tests methods.jl" begin
         wgrid = Γgrid(λmin = 4700f0, δζ = 0.001f0)
         basis = Basis(wgrid)
@@ -72,14 +51,35 @@ using Moose, Test
         end
 
         flow(wgrid, basis, data; output_path = h5path)
-        χdata = leggere(h5path, Val(:h5))
+        χdata = leggere(h5path, Val(:chi2file))
 
         
-        @test length(χdata.ids) == 24
-        @test abs(wgrid.ζ[argmin(χdata.curves[argmax(χdata.ids .== "2")])] - 0.41f0) < 1f-2
+        @test length(χdata.id) == 24
+        @test abs(wgrid.ζ[argmin(χdata.chi2_1[argmax(χdata.id .== "2")])] - 0.41f0) < 1f-2
 
         #χcube(joinpath(@__DIR__, "../data/cubes/DATACUBE_test.fits"), nothing)
         #@test isfile(joinpath(@__DIR__, "../output/chi2_files/DATACUBE_test_chi2.h5")) 
+    end
+
+    @testset "Test leggere.jl" begin
+        wgrid = Γgrid(λmin = 4700f0, δζ = 0.1f0)
+        basis = Basis(wgrid)
+
+        path = joinpath(@__DIR__, "../data/spectra_sample/")
+        data = leggere(path, Val(:fits))
+        @test length(data.flux) == 24
+
+        h5path  = joinpath(@__DIR__, "../output/chi2_files/chi2_testMoose.h5")
+        χdata   = leggere(h5path, Val(:chi2file))
+        @test length(χdata.ids) == 24
+
+        cube_data = leggere(joinpath(@__DIR__, "../data/cubes/DATACUBE_test.fits"), Val(:cube))
+        @test size(cube_data.flux) == (4,4,3721)
+        @test size(cube_data.sdev) == (4,4,3721)
+        @test any(.!iszero.(cube_data.flux[1,1,:]))
+        @test !any(isnan.(cube_data.sdev))
+        @test !any(isinf.(cube_data.sdev))        
+        @test !any(isnan.(cube_data.flux))
     end
 
     @testset "Test fnnls.jl" begin
