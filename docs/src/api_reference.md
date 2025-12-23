@@ -2,36 +2,32 @@
 
 This section provides the full API documentation for `Moose.jl`.
 
-### Types
+### Structs
 ```@docs
-Basis
 Γgrid
+Basis
 ```
 ### Metrics
 ```@docs
-Moose.GF
+GF
 Moose.MAD
 Moose.MAE 
-Moose.Δχ²
-Moose.R
+Δχ²
+R
 ```
 ### Moose NMF
 ```@docs
-Moose.nNMF
-Moose.nearly!
+nNMF
+nearly!
 ```
 ### Moose methods
 ```@docs
 fnnls
-Moose.interpolate
-Moose.threaded_fnnls
-Moose.χcube
-Moose.χfits
+interpolate
+flow
 ```
 ### Utils
 ```@docs
-Moose.sanitize 
-Moose.leggere_fits
-Moose.leggere_chifile
-Moose.leggere_cube
+leggere
+fits_to_h5
 ```

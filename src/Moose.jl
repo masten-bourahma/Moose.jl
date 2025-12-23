@@ -7,12 +7,13 @@ include("strutture.jl")
 export Γgrid, Basis
 
 include("metrics.jl")
-export GF, Δχ²
+export GF, Δχ², R
 
 include("fnnls.jl")
 export fnnls
 
 include("utils.jl")
+export fits_to_h5
 include("methods.jl")
 export interpolate, interpolate!, flow, flow!
 

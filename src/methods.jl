@@ -1,4 +1,4 @@
-using Base.Threads, Dates, LinearAlgebra
+using Base.Threads, Dates, LinearAlgebra, Peaks
 using ProgressMeter: @showprogress
 
 """
@@ -15,9 +15,8 @@ Arguments
 - **`f     ::Vector{Float32}`**   : Observed flux densities
 - **`σ     ::Vector{Float32}`**   : Flux associated standard deviations
 - **`λ     ::Vector{Float32}`**   : Observed wavelengths
-- **`fₓ    ::Float32 = 0f0`**   : Extrapolation value for fluxes
-- **`σₓ    ::Float32 = 1f6`**   : Extrapolation value for standard deviations
-None
+- **`fₓ    ::Float32 = 0f0`**     : Extrapolation value for fluxes
+- **`σₓ    ::Float32 = 1f6`**     : Extrapolation value for standard deviations
 
 returns
 =======
@@ -383,7 +382,8 @@ function flow(wgrid::Γgrid, basis::Basis, data; output_path::Union{String,Nothi
     k,l,n = basis.k, basis.l, basis.n
     fʳ = Vector{Float32}(undef, l)
     σʳ = Vector{Float32}(undef, l)
-    χ² = Vector{Float32}(undef, n)
+    r₁ = Vector{Float32}(undef, l)
+    χ²₁ = Vector{Float32}(undef, n)
     Ω  = Matrix{Float32}(undef, k, n)
 
     N = length(data.flux)
@@ -393,23 +393,35 @@ function flow(wgrid::Γgrid, basis::Basis, data; output_path::Union{String,Nothi
         f      = data.flux[i]
         σ = data.sdev[i]         
         λ = data.awave[i]
-
+        id = data.ids[i]
         interpolate!(basis, f, σ, λ, fʳ, σʳ)
-        flow!(basis, fʳ, σʳ, χ², Ω)
+        flow!(basis, fʳ, σʳ, χ²₁, Ω)
         
-        # predicted redshift ẑ  
-        ẑ = wgrid.ζ[argmin(χ²)]
+        # predicted redshift z₁  
+        z₁ = wgrid.ζ[argmin(χ²₁)]
         
-        # decomposition coeffs @ ẑ
-        ω = Ω[:, argmin(χ²)]
+        # decomposition coeffs @ z₁
+        ω₁ = Ω[:, argmin(χ²₁)]
         
+        # reconstruction @ z₁
+        r₁ = vec(ω * basis.H)
+
         # significance score \Delta\chi2
-        Δ = Δχ²(χ²)
+        Δ = Δχ²(χ²₁)
         
         # Robustness metric R
-        R_ = R(χ²)
-        
-        dset = Dict( "curve" => χ², "coeffs" => ω, "zhat" => ẑ, "dchi2"  => Δ, "R" => R_ )
+        R_ = R(χ²₁)
+
+        #indices of the first 5 solutions
+        indices = findminima(χ²₁, 25).indices
+        indices = sortperm(Δχ²(χ²₁, indices))
+        Δ1to5   = Δχ²(χ²₁, indices)
+        z1to5  = wgrid.ζ[sortperm(Δ1to5)]
+
+        dset = Dict( "id" => id, "chi2_1"  => χ²₁, "r_0" => fʳ, "r_1" => r₁, 
+                     "coeffs_1" => ω₁,  "z_1" => z₁, "z_1to5" => z1to5,
+                     "dchi2_1"  => Δ, "R_1" => R_,
+                     "dchi2_1to5" => Δ1to5)
 
         if isfile(output_path)
             h5open(output_path, "r+") do file
@@ -417,7 +429,6 @@ function flow(wgrid::Γgrid, basis::Basis, data; output_path::Union{String,Nothi
                 for (key,value) in dset
                     write(grp, key, value)
                 end
-                #write(file, data.ids[i], collect((χ², ω, ẑ, Δχ²_,R_)) )
             end
         else
             h5open(output_path, "w") do file
@@ -425,7 +436,6 @@ function flow(wgrid::Γgrid, basis::Basis, data; output_path::Union{String,Nothi
                 for (key,value) in dset
                     write(grp, key, value)
                 end
-                #write(file, data.ids[i], collect((χ², ω, ẑ, Δχ²_,R_)))
             end
         end
     end
@@ -447,8 +457,9 @@ function flow(data; output_path::Union{String,Nothing}= nothing, λmin::Float32=
     k,l,n = basis.k, basis.l, basis.n
     fʳ = Vector{Float32}(undef, l)
     σʳ = Vector{Float32}(undef, l)
-    χ² = Vector{Float32}(undef, l)
-    Ω  = Matrix{Float32}(undef, k,n)
+    r₁ = Vector{Float32}(undef, l)
+    χ²₁ = Vector{Float32}(undef, n)
+    Ω  = Matrix{Float32}(undef, k, n)
 
     N = length(data.flux)
 
@@ -459,19 +470,33 @@ function flow(data; output_path::Union{String,Nothing}= nothing, λmin::Float32=
         λ = data.awave[i]
 
         interpolate!(basis, f, σ, λ, fʳ, σʳ)
-        flow!(basis, fʳ, σʳ, χ², Ω)
-
-        # predicted redshift ẑ  
-        ẑ     = wgrid.ζ[argmin(χ²)]
-
-        # decomposition coeffs 
-        ω     = Ω[argmin(χ²)]
-        # significance score \Delta\chi2
-        Δ  = Δχ²(χ²)
-        # Robustness metric R
-        R_    = R(χ²)
+        flow!(basis, fʳ, σʳ, χ²₁, Ω)
         
-        dset = Dict( "curve" => χ², "coeffs" => ω, "zhat" => ẑ, "dchi2"  => Δ, "R" => R_ )
+        # predicted redshift z₁  
+        z₁ = wgrid.ζ[argmin(χ²₁)]
+        
+        # decomposition coeffs @ z₁
+        ω₁ = Ω[:, argmin(χ²₁)]
+        
+        # reconstruction @ z₁
+        r₁ = vec(ω * basis.H)
+
+        # significance score \Delta\chi2
+        Δ = Δχ²(χ²₁)
+        
+        # Robustness metric R
+        R_ = R(χ²₁)
+
+        #indices of the first 5 solutions
+        indices = findminima(χ²₁, 25).indices
+        indices = sortperm(Δχ²(χ²₁, indices))
+        Δ1to5   = Δχ²(χ²₁, indices)
+        z1to5  = wgrid.ζ[sortperm(Δ1to5)]
+
+        dset = Dict( "chi2_1"  => χ²₁, "r_0" => fʳ, "r_1" => r₁, 
+                     "coeffs_1" => ω₁,  "z_1" => z₁, "z_1to5" => z1to5,
+                     "dchi2_1"  => Δ, "R_1" => R_,
+                     "dchi2_1to5" => Δ1to5)
 
         if isfile(output_path)
             h5open(output_path, "r+") do file
@@ -511,8 +536,9 @@ function flow(fits_path::String, DataExtName::Union{String, Int}, StatExtName::U
     k,l,n = basis.k, basis.l, basis.n
     fʳ = Vector{Float32}(undef, l)
     σʳ = Vector{Float32}(undef, l)
-    χ² = Vector{Float32}(undef, l)
-    Ω  = Matrix{Float32}(undef, k,n)
+    r₁ = Vector{Float32}(undef, l)
+    χ²₁ = Vector{Float32}(undef, n)
+    Ω  = Matrix{Float32}(undef, k, n)
 
     N = length(data.flux)
 
@@ -523,18 +549,33 @@ function flow(fits_path::String, DataExtName::Union{String, Int}, StatExtName::U
         λ = data.awave[i]
 
         interpolate!(basis, f, σ, λ, fʳ, σʳ)
-        flow!(basis, fʳ, σʳ, χ², Ω)
+        flow!(basis, fʳ, σʳ, χ²₁, Ω)
+        
+        # predicted redshift z₁  
+        z₁ = wgrid.ζ[argmin(χ²₁)]
+        
+        # decomposition coeffs @ z₁
+        ω₁ = Ω[:, argmin(χ²₁)]
+        
+        # reconstruction @ z₁
+        r₁ = vec(ω * basis.H)
 
-        # predicted redshift ẑ  
-        ẑ     = wgrid.ζ[argmin(χ²)]
-
-        # decomposition coeffs 
-        ω     = Ω[argmin(χ²)]
         # significance score \Delta\chi2
-        Δ  = Δχ²(χ²)
+        Δ = Δχ²(χ²₁)
+        
         # Robustness metric R
-        R_    = R(χ²)
-        dset = Dict( "curve" => χ², "coeffs" => ω, "zhat" => ẑ, "dchi2"  => Δ, "R" => R_ )
+        R_ = R(χ²₁)
+
+        #indices of the first 5 solutions
+        indices = findminima(χ²₁, 25).indices
+        indices = sortperm(Δχ²(χ²₁, indices))
+        Δ1to5   = Δχ²(χ²₁, indices)
+        z1to5  = wgrid.ζ[sortperm(Δ1to5)]
+
+        dset = Dict( "chi2_1"  => χ²₁, "r_0" => fʳ, "r_1" => r₁, 
+                     "coeffs_1" => ω₁,  "z_1" => z₁, "z_1to5" => z1to5,
+                     "dchi2_1"  => Δ, "R_1" => R_,
+                     "dchi2_1to5" => Δ1to5)
 
         if isfile(output_path)
             h5open(output_path, "r+") do file
@@ -571,8 +612,9 @@ function flow(wgrid::Γgrid, basis::Basis, fits_path::String, DataExtName::Union
     k,l,n = basis.k, basis.l, basis.n
     fʳ = Vector{Float32}(undef, l)
     σʳ = Vector{Float32}(undef, l)
-    χ² = Vector{Float32}(undef, l)
-    Ω  = Matrix{Float32}(undef, k,n)
+    r₁ = Vector{Float32}(undef, l)
+    χ²₁ = Vector{Float32}(undef, n)
+    Ω  = Matrix{Float32}(undef, k, n)
 
     N = length(data.flux)
 
@@ -583,18 +625,34 @@ function flow(wgrid::Γgrid, basis::Basis, fits_path::String, DataExtName::Union
         λ = data.awave[i]
 
         interpolate!(basis, f, σ, λ, fʳ, σʳ)
-        flow!(basis, fʳ, σʳ, χ², Ω)
-        # predicted redshift ẑ  
-        ẑ     = wgrid.ζ[argmin(χ²)]
+        flow!(basis, fʳ, σʳ, χ²₁, Ω)
+        
+        # predicted redshift z₁  
+        z₁ = wgrid.ζ[argmin(χ²₁)]
+        
+        # decomposition coeffs @ z₁
+        ω₁ = Ω[:, argmin(χ²₁)]
+        
+        # reconstruction @ z₁
+        r₁ = vec(ω * basis.H)
 
-        # decomposition coeffs 
-        ω     = Ω[argmin(χ²)]
         # significance score \Delta\chi2
-        Δ  = Δχ²(χ²)
+        Δ = Δχ²(χ²₁)
+        
         # Robustness metric R
-        R_    = R(χ²)
+        R_ = R(χ²₁)
 
-        dset = Dict( "curve" => χ², "coeffs" => ω, "zhat" => ẑ, "dchi2"  => Δ, "R" => R_ )
+        #indices of the first 5 solutions
+        indices = findminima(χ²₁, 25).indices
+        indices = sortperm(Δχ²(χ²₁, indices))
+        Δ1to5   = Δχ²(χ²₁, indices)
+        z1to5  = wgrid.ζ[sortperm(Δ1to5)]
+
+        dset = Dict( "chi2_1"  => χ²₁, "r_0" => fʳ, "r_1" => r₁, 
+                     "coeffs_1" => ω₁,  "z_1" => z₁, "z_1to5" => z1to5,
+                     "dchi2_1"  => Δ, "R_1" => R_,
+                     "dchi2_1to5" => Δ1to5)
+
         if isfile(output_path)
             h5open(output_path, "r+") do file
                 grp = create_group(file, data.ids[i])
@@ -616,62 +674,45 @@ function flow(wgrid::Γgrid, basis::Basis, fits_path::String, DataExtName::Union
 end
 
 """
-    flood(path::String, save_path::Union{String, Nothing}; kwargs...)
+    flow(src::String, ::Val{:kernel}; δζᵣ::Float32 = 0.0005f0)
 
 Description
 ===========
-Reads the data from a datacube in `path`, and runs a `threaded_fnnls` on each spaxel. It then saves 
-the resulting chi2 Array into an ".h5" file.
-
+Reads the data from a datacube in `src`, and runs a threaded FNNLS on each spectrum in a sliding 3x3 mean kernel. It then writes 
+the resulting chi-square curves into an HDF5 file.
 Arguments
 =========
-- **`path        ::String`**            : Path to the datacube ".fits" file
-- **`save_path   ::String`**            : Path where to save the h5file output 
-
-Keyword Arguments
-================= 
-- **`DataExtName ::String`**   : Name of the data extension
-- **`StatExtName ::String`**   : Name of the stat extension
-
-!!! note
-    Keyword arguments are passed directly to `leggere_cube`. If the Data extension is named "DATA", there is no need to pass
-    this keyword argument. Similarly, if the stat extension is named "STAT", there is no need to pass this keyword
-
+- **`src ::String`**          : path to the HDF5 file containing the datacube
+- **`Val(:kernel) ::String`** : type-driven dispatch
+Keyword arguments
+=================
+- **`δζᵣ ::Flot32`**          : test redshifts spacing for the run
 Output
 ======
-An ".h5" file containing  the chi2 Array, located in `save_path`, the key to the h5 dataset is given by
-```julia
-h5key = splitext(basename(path))[1]
-```
+An HDF5 file containing  the chi-square curves and other run metadata. The path to this file is generated by adding the suffix "_Moose" to the source file.
+The HDF5 file contains an HDF5 group named "CHI2_KERNEL". This group contains HDF5 datasets, each dataset corresponds to one chi-square curve with a name corresponding
+to its indices in the cube. For example the chi-square curve at indices (1,1) will have the name "1_1". 
 
 Returns
 =======
 `nothing`
-
-Arguments
-=========
-- **`fits_path ::String`**     : path to the datacube `.fits` file
-- **`h5_path ::String`**       : Name of the stat extension
-- **`DataExtName ::String`**   : Name of the data extension
-- **`StatExtName ::String`**   : Name of the stat extension
-
 Author(s)
 =========
 B.Masten
 """
-function flow(src::String; δζᵣ::Float32 = 0.0005f0)
+function flow(src::String, ::Val{:kernel}; δζᵣ::Float32 = 0.0005f0)
     
     @assert isfile(src) "🔴 File not found: $src"
     dst = splitext(src)[1] * "_Moose.h5"
     
     if isfile(dst)
-        @warn("⚠️ File already exists @ the default path generated by `Moose.jl`;
+        @info("⚠️ File already exists @ the default path generated by `Moose.jl`;
                `Moose.jl` will resume writing this file")
     else
-        @warn("📄 File generated for the output! @ $(dst)")
+        @info("📄 File generated for the output! @ $(dst)")
     end
 
-    data, stat, metadata = leggere(src, Val(:h5))
+    data, stat, metadata = leggere(src, Val(:h5cube))
 
     N₁, N₂, N₃, λᵣ, δλ = metadata
     λ = collect(Float32, λᵣ .+ (0:N₃-1) .* δλ)
@@ -681,16 +722,7 @@ function flow(src::String; δζᵣ::Float32 = 0.0005f0)
 
     output, iₜ, jₜ = awaken(dst, basis, wgrid, metadata)
 
-    
-    #grp_spaxels = output["CHI2_SPAXELS"]
-    grp  = output["CHI2_3X3"]
-    #grp = output["CHI2_3X3GK"]
-
-
-    #kernel = [1f0/16f0  1f0/8f0  1f0/16f0;
-    #          1f0/8f0   1f0/4f0  1f0/8f0 ;
-    #          1f0/16f0  1f0/8f0  1f0/16f0]
-    
+    grp  = output["CHI2_KERNEL"]   
     kernel = [1f0/9f0  1f0/9f0  1f0/9f0;
               1f0/9f0  1f0/9f0  1f0/9f0;
               1f0/9f0  1f0/9f0  1f0/9f0]          
@@ -722,6 +754,114 @@ function flow(src::String; δζᵣ::Float32 = 0.0005f0)
                         delete_object(grp, dset_name)
                     end
                     status, f, σ = scrub(data, stat, kernel, i, j, N₁, N₂, N₃)
+                    if status === :good
+                        interpolate!(basis, f, σ, λ, fʳ, σʳ)
+                        flow!(basis, fʳ, σʳ, χ²)
+                        grp[dset_name] = χ²
+                    else
+                        grp[dset_name] = NaN32
+                    end
+                else
+                    rethrow(err)
+                end
+            finally
+                delete_attribute(output, "j_t") 
+                attributes(output)["j_t"] = j + 1
+            end
+            
+            if stop
+                break 
+            end
+        end
+
+        if stop
+            break 
+        end
+        #update iₜ & jₜ attributes
+        jₜ = 1
+        delete_attribute(output, "i_t")
+        attributes(output)["i_t"] = i + 1 
+    end
+    close(output)
+end
+
+"""
+    flow(src::String, ::Val{:spaxel}; δζᵣ::Float32 = 0.0005f0)
+
+Description
+===========
+Reads the data from a datacube in `src`, and runs a threaded FNNLS on each spaxel. It then writes 
+the resulting chi-square curves into an HDF5 file.
+Arguments
+=========
+- **`src ::String`**          : path to the HDF5 file containing the datacube
+- **`Val(:kernel) ::String`** : type-driven dispatch
+Keyword arguments
+=================
+- **`δζᵣ ::Flot32`**          : test redshifts spacing for the run
+Output
+======
+An HDF5 file containing  the chi-square curves and other run metadata. The path to this file is generated by adding the suffix "_Moose" to the source file.
+The HDF5 file contains an HDF5 group named "CHI2_SPAXELS". This group contains HDF5 datasets, each dataset corresponds to one chi-square curve with a name corresponding
+to its indices in the cube. For example the chi-square curve at indices (1,1) will have the name "1_1". 
+Returns
+=======
+`nothing`
+Author(s)
+=========
+B.Masten
+"""
+function flow(src::String, ::Val{:spaxels}; δζᵣ::Float32 = 0.0005f0)
+    
+    @assert isfile(src) "🔴 File not found: $src"
+    dst = splitext(src)[1] * "_Moose.h5"
+    
+    if isfile(dst)
+        @info("⚠️ File already exists @ the default path generated by `Moose.jl`;
+               `Moose.jl` will resume writing this file")
+    else
+        @info("📄 File generated for the output! @ $(dst)")
+    end
+
+    data, stat, metadata = leggere(src, Val(:h5cube))
+
+    N₁, N₂, N₃, λᵣ, δλ = metadata
+    λ = collect(Float32, λᵣ .+ (0:N₃-1) .* δλ)
+    
+    wgrid  = Γgrid(λmin = λᵣ, δζ = δζᵣ)
+    basis  = Basis(wgrid)
+
+    output, iₜ, jₜ = awaken(dst, basis, wgrid, metadata)
+    
+    grp = output["CHI2_SPAXELS"]
+
+    stop = false 
+    fʳ = zeros(Float32, basis.l)
+    σʳ = zeros(Float32, basis.l)
+    χ² = Vector{Float32}(undef, basis.n)
+
+    @showprogress for i in iₜ:N₁
+        for j in jₜ:N₂
+            dset_name = nothing
+            try
+                dset_name = "$(i)_$(j)"
+                status, f, σ = scrub(data, stat, i, j, N₃)
+                if status === :good
+                    interpolate!(basis, f, σ, λ, fʳ, σʳ)
+                    flow!(basis, fʳ, σʳ, χ²)
+                    grp[dset_name] = χ²
+                else
+                    grp[dset_name] = NaN32
+                end
+
+            catch err 
+                if isa(err, InterruptException)
+                    println("🔴 Stop requested! `Moose.jl` will exit after current iteration...")
+                    stop = true
+                    if haskey(grp, dset_name)
+                        delete_object(grp, dset_name)
+                    end
+                    status, f, σ = scrub(data, stat, i, j, N₃)
                     if status === :good
                         interpolate!(basis, f, σ, λ, fʳ, σʳ)
                         flow!(basis, fʳ, σʳ, χ²)

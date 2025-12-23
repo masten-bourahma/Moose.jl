@@ -1,48 +1,49 @@
 using LinearAlgebra, Statistics, HDF5, Base.Threads
 
-"""
+@doc raw"""
     Γgrid(; λmin = 4500f0, λmax = 9350f0, δλ = 1.25f0,
-            ζmin = 0f0,    ζmax = 7f0,    δζ = 0.0015f0)
+            ζmin = 0f0,    ζmax = 7f0,    δζ = 0.001f0)
 
 Description
 ============
-Creates a rest-frame log-wavelength grid with uniform spacing. It also provides
-the test redshifts vector. All needed arguments to initialize this struct
-have default values, so that, one can get the grid without specifying any
-argument.
+This function creates a rest-frame log-wavelength grid with a uniform spacing, and provides
+the test redshifts vector. The function has only kerword arguments, and all of them have default values.
 
 Arguments
 ==========
-- **`λmin ::Float32 = 4500`**   : MUSE minimal observed wavelength in Å
-- **`λmax ::Float32 = 9350`**   : MUSE maximal observed wavelength in Å
-- **`δλ   ::Float32 = 1.25`**   : MUSE spectral resolution in Å
-- **`ζmin ::Float32 = 0`**      : minimum test redshift
-- **`ζmax ::Float32 = 7`**      : maximum test redshift
-- **`δζ   ::Float32 = 0.0015`** : step of test redshift
-
-
+- **`λmin ::Float32 = 4600f0`**   : MUSE minimal observed wavelength in Å
+- **`λmax ::Float32 = 9350f0`**   : MUSE maximal observed wavelength in Å
+- **`δλ   ::Float32 = 1.25f0`**   : MUSE spectral sampling in Å
+- **`ζmin ::Float32 = 0f0`**      : minimal test redshift
+- **`ζmax ::Float32 = 6.7f0`**    : maximal test redshift
+- **`δζ   ::Float32 = 0.001f0`**  : test redshifts step
 Details
 ========
-
 This structure fills additional fields: 
 
--**`δΓ :: Float32`**         : rest-frame spectral resolutionm
--**`Γ  :: Vector{Float32}`** : rest-frame grid log-wavelengths vector
--**`ζ  :: Vector{Float32}`** : vector of test redshifts            
+- **`δΓ :: Float32`**         : the rest-frame log-wavelength grid uniform spacing
+- **`Γ  :: Vector{Float32}`** : the rest-frame grid log-wavelengths vector
+- **`ζ  :: Vector{Float32}`** : the vector of test redshifts            
 
 Examples
 ========
-    # to get the rest-frame log-wavelength grid just run
+```julia
+    # to get the rest-frame log-wavelength run
     Γ = Γgrid().Γ
-!!! note
-    The resolution `δΓ` of the grid is not an argument, if one wants to play with this parameter you have to change the code. `δΓ` is calculated 
-    as the mean resolution of the following grid:
-    ` \\mathrm{mean}\\!\\left( 
-        \\log \\lambda_{\\rm obs,min} / (1 + z_{\\rm max}) 
-        : \\delta\\lambda / (1 + z_{\\rm max}) 
-        : \\lambda_{\\rm obs,max}
-      \\right) `
+    # to get the vector of test redshifts
+    ζo publish  = Γgrid().ζ
+```
 
+!!! note
+    The grid resolution `δΓ` is not an input argument. To modify this parameter, the code itself must be changed.  
+    `δΓ` is computed as:
+    ```math
+    \delta \Gamma = \mathrm{mean} \left(
+        \log\!\left(\frac{\lambda_{\mathrm{obs,min}}}{1 + z_{\mathrm{max}}}\right)
+        : \frac{\delta\lambda}{1 + z_{\mathrm{max}}}
+        : \lambda_{\mathrm{obs,max}}
+    \right)
+    ```
 """
 mutable struct Γgrid
 
@@ -79,13 +80,12 @@ end
 
 
 """
-    Basis()
+    Basis(wgrid::Γgrid; rank::Int = 10)
 
 Description
 ============
-This struct loads the basis vectors matrix H and pre-computes several matricial products and stores them in a julia Struct.
-This storage allows to save computational ressources and speed up the code. By default it loads a rank 10 NMF basis vectors
-obtained using a sequential nearly-NMF carried on ~7000 MUSE galaxy spectra
+This function instantiates a Basis Struct. It loads the basis vectors matrix `H`, stores slices of `H` corresponding to test redshifts, and pre-computes several matricial products.
+By default it loads a rank-10 NMF basis vectors obtained using a sequential nearly-NMF carried on ~ 7000 MUSE galaxy spectra.
 
 Arguments
 ==========
@@ -94,15 +94,24 @@ Arguments
 Optional arguments
 ==================
 -**`rank  :: Int`**   : rank of the basis you want to use, default to 10. Rank ∈ [6, 14]  
+
+Fields
+======
+- **`H    :: Matrix{Float32}`**: Full basis vectors matrix
+- **`Hᵀ   :: Matrix{Float32}`**: Transposed basis vectors matrix
+- **`Hᵢ   :: Vector{Matrix{Float32}}`**: Slices of H corresponding to test redshifts in wgrid.ζ
+- **`HHᵀᵢ :: Vector{Matrix{Float32}}`**: Hᵢ * Hᵢᵀ matricial products
+- **`Λ    :: Matrix{Float32}`**: Rest wavelengths array corresponding to test redshifts in wgrid.ζ
+- **`k    :: Int`**: Rank of H
+- **`l    :: Int`**: Spectral size of basis vectors
+- **`n    :: Int`**: Number of test redshifts
 """
 struct Basis
     H       :: Matrix{Float32}   # Full basis vectors matrix
     Hᵀ      :: Matrix{Float32}   # Transposed basis matrix
     HHᵀᵢ    :: Vector{Matrix{Float32}}
     Hᵢ      :: Vector{Matrix{Float32}}
-    
     Λ       :: Matrix{Float32} # rest wavelengths array
-
     k       :: Int             # Rank of H
     l       :: Int             # spectral dim of basis vectors
     n       :: Int             # number of test redshifts

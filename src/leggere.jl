@@ -3,7 +3,7 @@ using FITSIO, HDF5, LinearAlgebra
 #Val() is used to pass values as types
 
 """
-    leggere(path::String; DataExtName::String= "DATA", StatExtName::String ="STAT", ::Val{:Nfits})
+    leggere(path::String, ::Val{:fits}; DataExtName::String= "DATA", StatExtName::String ="STAT", )
 
 Description
 ===========
@@ -13,18 +13,20 @@ be specified by setting the keyword arguments `DataExtName` and `StatExtName`
 
 Arguments
 =========
-- **`path ::String`**                   : Path to the fits files folder 
+- **`path ::String`**                   : Path to the FITS files folder 
+- **`Val{:fits}`**                      : Type-driven dispatch
+
+Keyword arguments
+=========
 - **`DataExtName ::String = "DATA"`**   : Name of the data extension
 - **`StatExtName ::String = "STAT"`**   : Name of the stat extension
-- **`Val{:fits}`**   :
 
 returns
 =======
 - **`data ::NamedTuple`** : NamedTuple with four fields (flux, sdev, awave, ids)
 
-```warning
+!!! warning
     `DataExtName` and `StatExtName` have to be consistent across fits files
-````
 """
 function leggere(path::String, ::Val{:fits}; DataExtName::Union{String, Int}= "DATA", StatExtName::Union{String, Int}= "STAT")
 
@@ -63,23 +65,24 @@ function leggere(path::String, ::Val{:fits}; DataExtName::Union{String, Int}= "D
 end
 
 """
-    leggere(path::String)
+    leggere(path::String, ::Val{:chi2-file})
 
 Description
 ===========
-This function reads χ² curves, best decomposition parameters ω , predicted redshifts ẑ, significance scores Δχ², and robustness scores R, 
-stored in a `.h5` file and to which the argument `path` points at.
+This function reads chi-square curves, best decomposition coefficients, predicted redshifts, significance scores, robustness scores, ... 
+stored in a HDF5 file and to which the argument `path` points at.
 
 Arguments
 =========
-- **`path ::String`** : Path to the h5 file 
+- **`path ::String`**     : Path to the h5 file 
+- **`Val{:chi2-file}`**   : Type-driven dispatch
 
 returns
 =======
-- NamedTuple with 6 fields (ids, chi2, omega, zhat, dchi2, R)
+A NamedTuple with 6 fields (chi2, omega, zhat, dchi2, R)
 
 """
-function leggere(path::String, ::Val{:h5})
+function leggere(path::String, ::Val{:chi2file})
 
     if !isfile(path)
         error("🛑 file does not exist!")
@@ -88,33 +91,46 @@ function leggere(path::String, ::Val{:h5})
     end
 
     file   = h5open(path, "r")
-    h5keys = keys(file)
-    N      = length(h5keys)
+    grp_names         = keys(file)
+    N                 = length(grp_names)
     
-    χ²     = Vector{Vector{Float32}}(undef,N)
-    ω      = Vector{Vector{Float32}}(undef,N)
-    ẑ      = Vector{Float32}(undef,N)
-    Δχ²    = Vector{Float32}(undef,N)
-    R      = Vector{Float32}(undef,N)
+    χ²₁     = Vector{Vector{Float32}}(undef,N)
+    ω₁      = Vector{Vector{Float32}}(undef,N)
+    z₁      = Vector{Float32}(undef,N)
+    Δχ²₁    = Vector{Float32}(undef,N)
+    R₁      = Vector{Float32}(undef,N)
 
+    r₀    = Vector{Vector{Float32}}(undef,N)
+    r₁    = Vector{Vector{Float32}}(undef,N)
+    z₅₎   = Vector{Vector{Float32}}(undef,N)
+    Δχ²₅₎ = Vector{Vector{Float32}}(undef,N)
 
-    for (i,key) in enumerate(h5keys)
-        grp     = file[key]
-        χ²[i]   = read(grp["curve"])
-        ω[i]    = read(grp["coeffs"]) 
-        ẑ[i]    = read(grp["zhat"])
-        Δχ²[i]  = read(grp["dchi2"])
-        R[i]    = read(grp["R"])
+    for (i,key) in enumerate(grp_names)
+        grp      = file[key]
+        χ²₁[i]   = read(grp["chi2_1"])
+        r₀       = read(grp["r_0"])
+        r₁       = read(grp["r_1"])
+        ω₁[i]    = read(grp["coeffs_1"]) 
+        z₁[i]    = read(grp["z_1"])
+        z₅₎      = read(grp["z_1to5"])
+        Δχ²₁[i]  = read(grp["dchi2_1"])
+        Δχ²₅₎    = read(grp["dchi2_1to5"])
+        R₁[i]    = read(grp["R_1"])
     end
     close(file)
     
-    data = (ids = h5keys, curves = χ², coeffs = ω, zhats = ẑ, dchi2s = Δχ² , Rs = R  )
+    data = (id = grp_names, chi2_1 = χ²₁, coeffs_1 = ω₁, r_0 = r₀, r_1 = r₁,
+            z_1 = z₁, z_1t05 = z₅₎, dchi2_1 = Δχ²₁ , R_1 = R₁,
+            dchi2_1to5 = Δχ²₅₎)
+            
+    #@info "A NamedTuple will be returned with the following field names and types"
+    #println("id", "chi2_1")
     return data
 end
 
 
 """
-    leggere_cube(path::String; DataExtName::String ="DATA", StatExtName::String = "STAT" )
+    leggere(path::String; DataExtName::String ="DATA", StatExtName::String = "STAT" )
 
 Description
 ===========

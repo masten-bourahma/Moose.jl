@@ -171,48 +171,10 @@ function scrub(data::Array{Float32, 3}, stat::Array{Float32, 3}, i::Int, j::Int,
 
     if sum(iszero.(fᵢⱼ)) > 250
         return (status=:bad, flux=fᵢⱼ, std=σᵢⱼ)
+    else
+        return (status=:good, flux=fᵢⱼ, std=σᵢⱼ)
     end
-
-    return (status=:good, flux=fᵢⱼ, std=σᵢⱼ)
 end
-
-function scrub(data::Array{Float32, 3}, stat::Array{Float32, 3}, i::Int, j::Int, N₁::Int, N₂::Int, N₃::Int)
-
-    # subcube indices (3x3 window)
-    i₁ = clamp(i-1, 1, N₁)
-    i₂ = clamp(i+1, 1, N₁)
-    j₁ = clamp(j-1, 1, N₂)
-    j₂ = clamp(j+1, 1, N₂)
-
-    # read sub cube
-    f, σ² = zeros(Float32, N₃),  zeros(Float32, N₃)
-    n = 0
-    for u in i₁:i₂
-        for v in j₁:j₂
-            fᵤᵥ =  Array(@view data[u, v, :])
-            if count(isnan, fᵤᵥ) > 250
-                continue 
-            end
-            σᵤᵥ² =  Array(@view stat[u, v, :])
-            
-            #sanitize
-            @inbounds @simd for k in 1:N₃
-                if !isfinite(fᵤᵥ[k])
-                    fᵤᵥ[k] = 0f0
-                end
-                if !isfinite(σᵤᵥ²[k]) || σᵤᵥ²[k] == 0f0 || fᵤᵥ[k] == 0f0
-                    σᵤᵥ²[k] = 1f12
-                end
-            end
-            f .+= fᵤᵥ
-            σ² .+= σᵤᵥ²
-            n +=1
-        end
-    end
-
-    return f ./ n,  sqrt.(σ²) ./ n
-end
-
 function scrub(data::Array{Float32, 3}, stat::Array{Float32, 3}, kernel::Matrix{Float32},
                i::Int, j::Int, N₁::Int, N₂::Int, N₃::Int)
     
@@ -256,17 +218,20 @@ function scrub(data::Array{Float32, 3}, stat::Array{Float32, 3}, kernel::Matrix{
     end
     return (status=:good, flux=f, std=sqrt.(σ²))
 end
+
+
 """
-    fits_to_h5(fits_path::String, h5_path::Union{String,Nothing};
-                    DataExtName::String="DATA",
-                    StatExtName::String="STAT")
+    fits_to_h5(fits_path::String, h5_path::Union{String,Nothing}; DataExtName::String="DATA", StatExtName::String="STAT")
+
 Description
 ===========
-Reads data and stat HDUs from a fits file and saves them in an h5 file.
+This is a util function that extracts the datacube content of a FITS file into an HDF5 file.
+This is useful as datasets in HDF5 format allow memory map.
+
 Arguments
 =========
 - **`fits_path ::String`**                : Path to the datacube ".fits" file
-- **`h5_path   ::Union{String,Nothing}`** : Path where to save the h5 file output, if nothing a default file will be generated
+- **`h5_path   ::Union{String,Nothing}`** : Name/path where to save the h5 file output, if nothing a default name will be generated
 
 Keyword Arguments
 ================= 
@@ -351,7 +316,7 @@ Arguments
 
 """
 #λ    = collect(Float32, λᵣ .+ (0:N₃-1) .* δλ)
-function leggere(path::String, ::Val{:h5})
+function leggere(path::String, ::Val{:h5cube})
     h5open(path, "r") do h5 
 
         N₁ = read_attribute(h5, "N₁")
@@ -378,7 +343,6 @@ end
 
 
 function leggere(h5::HDF5.File)
-
     data, stat = h5["data"], h5["stat"]
     if HDF5.ismmappable(data)
         data = HDF5.readmmap(data)

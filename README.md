@@ -31,11 +31,6 @@ The performance of `Moose.jl` is assessed in `learn/test` data split configurati
 The plot below shows the GF of `Moose.jl` as a function of the signal-to-noise (SNR) ratio and as function of redshift $z$
 <img src="docs/src/assets/test_z_snr.png" alt="`Moose.jl performance`" width="600"/>
 
-## Main functions
-1. To predict redshifts for a single spectrum: flow
-2. To predict redshifts for a series of spectra in their `.fits` files: torrent
-3. To predict redshifts for a full datacube: worm
-
 
 ## Output file fields
 | **Output** | **Type**          | **When?** | **Dimensions** | **Description**                              |
@@ -55,4 +50,3 @@ The plot below shows the GF of `Moose.jl` as a function of the signal-to-noise (
 | `R₂`       | `Float32`         |           | `—`            | Robustness score of the second-pass best-fit redshift. |
 ---
 **Note:** 1. Parameters marked with (*) are only present when true labels are known.
-          2. 

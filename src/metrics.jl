@@ -19,6 +19,7 @@ Author(s)
 =========
 B. Masten
 """
+
 function sanitize(z::Vector{Float32},ẑ::Vector{Float32})
 
     # 1. Check for same size
@@ -175,9 +176,14 @@ Author(s)
 B. Masten
 """
 function Δχ²(χ²::Vector{Float32})
-    Q1     = quantile(χ², 0.25)
-    Δχ²_  = 1 - minimum(χ² ./ Q1)
-    return Δχ²_
+    Q₁     = quantile(χ², 0.25)
+    Δ      = 1 - minimum(χ² ./ Q₁)
+    return Δ 
+end
+function Δχ²(χ²::Vector{Float32}, indices::Vector{Int})
+    Q₁     = quantile(χ², 0.25)
+    Δ      = 1 .- (χ²[indices] ./ Q₁)
+    return Δ 
 end
 
 """
@@ -210,16 +216,17 @@ Author(s)
 
 B. Masten
 """
-function R(χ2::Vector{Float32})
-    N      = length(χ2)
-    Q1     = quantile(χ2, 0.25)
-    min1   = minimum(χ2) 
-    mindex = argmin(χ2)
+function R(χ²::Vector{Float32})
+    N      = length(χ²)
+    Q₁     = quantile(χ², 0.25)
+    min1   = minimum(χ²) 
+    mindex = argmin(χ²)
     mask   = ones(Bool, N)
     mask[max(1, mindex - 25): min(N, mindex + 25)] .= false
-    min2   = sort(χ2[mask])[1]
+    min2   = sort(χ²[mask])[1]
 
-    R_ =  (min2 - min1) / std(χ2[χ2 .<= Q1])
+    R_ =  (min2 - min1) / std(χ²[χ² .<= Q₁])
     
     return R_
 end
+

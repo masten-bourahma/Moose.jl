@@ -30,21 +30,19 @@ makedocs(  sitename="Moose.jl",
                     ),
           #          canonical = "https://masten-bourahma.github.io/Moose.jl/stable"), # Your docs URL
            modules = [Moose],
-           pages   = [ "Home" => "index.md", # Main page
-                       "Introduction" => "introduction.md",
-                       "Usage example" => "_generated/Example.md",
-                       "Usage example, running Moose on fits files" => "example_fits.md",
-                       "Usage example, running Moose on a datacube" => "example_cube.md",
-                       "API reference" => "api_reference.md", 
-                       "References" => "references.md"],
+           pages   = [ "Home"           => "index.md", # Main page
+                       "Introduction"   => "introduction.md",
+                       "Usage example"  => "_generated/Example.md",
+                       "Usage examples" => "examples.md",
+                       "API reference"  => "api_reference.md", 
+                       "References"     => "references.md"],
            doctest = :true,
            clean = true,
            checkdocs = :all)
 
                        # Deploy to GitHub Pages
-#deploydocs(
-#    repo = "github.com/yourusername/MonSuperPackage.jl.git", # Replace with your repo URL
-#    push_preview = true, # Deploy previews for pull requests
-#    devbranch = "main", # Branch where development happens
-#)
+deploydocs(
+    repo = "github.com/masten-bourahma/Moose.jl.git", # Replace with your repo URL
+    push_preview = true, # Deploy previews for pull requests
+    devbranch = "dev",) # Branch where development happens
 
