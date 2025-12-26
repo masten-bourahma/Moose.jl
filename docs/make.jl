@@ -32,7 +32,7 @@ makedocs(  sitename="Moose.jl",
            modules = [Moose],
            pages   = [ "Home"             => "index.md", # Main page
                        "Context"          => "context.md",
-                       "Low level usage"  => "_generated/Example.md",
+                       "Basic usage"  => "_generated/Example.md",
                        "Usage examples"   => "examples.md",
                        "API reference"    => "api_reference.md"],
            doctest = :true,
