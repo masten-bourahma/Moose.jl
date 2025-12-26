@@ -30,12 +30,11 @@ makedocs(  sitename="Moose.jl",
                     ),
           #          canonical = "https://masten-bourahma.github.io/Moose.jl/stable"), # Your docs URL
            modules = [Moose],
-           pages   = [ "Home"           => "index.md", # Main page
-                       "Introduction"   => "introduction.md",
-                       "Usage example"  => "_generated/Example.md",
-                       "Usage examples" => "examples.md",
-                       "API reference"  => "api_reference.md", 
-                       "References"     => "references.md"],
+           pages   = [ "Home"             => "index.md", # Main page
+                       "Context"          => "context.md",
+                       "Low level usage"  => "_generated/Example.md",
+                       "Usage examples"   => "examples.md",
+                       "API reference"    => "api_reference.md"],
            doctest = :true,
            clean = true,
            checkdocs = :all)

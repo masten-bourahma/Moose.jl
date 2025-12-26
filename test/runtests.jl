@@ -71,7 +71,7 @@ using Moose, Test
 
         h5path  = joinpath(@__DIR__, "../output/chi2_files/chi2_testMoose.h5")
         χdata   = leggere(h5path, Val(:chi2file))
-        @test length(χdata.ids) == 24
+        @test length(χdata.id) == 24
 
         cube_data = leggere(joinpath(@__DIR__, "../data/cubes/DATACUBE_test.fits"), Val(:cube))
         @test size(cube_data.flux) == (4,4,3721)

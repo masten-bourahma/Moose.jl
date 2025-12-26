@@ -404,7 +404,7 @@ function flow(wgrid::Γgrid, basis::Basis, data; output_path::Union{String,Nothi
         ω₁ = Ω[:, argmin(χ²₁)]
         
         # reconstruction @ z₁
-        r₁ = vec(ω * basis.H)
+        r₁ = vec(ω₁' * basis.H)
 
         # significance score \Delta\chi2
         Δ = Δχ²(χ²₁)

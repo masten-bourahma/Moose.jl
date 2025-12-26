@@ -1,3 +1,5 @@
+## Running Non-negative Matrix Factorization (NMF)
+
 ## Running `Moose.jl` on FITS files
 This example demonstrates how to run `Moose.jl` on a collection of one-dimensional spectra stored as individual FITS files within a single directory.
 We illustrate this workflow using a sample of spectra located @ "data/spectra_sample".
@@ -169,5 +171,5 @@ Checking the content of "/data/cubes/DATACUBE_test_Moose.h5" will show,
 
 ## Deblending
 !!! info
-   This section is under construction
+    This section is under construction.
 
