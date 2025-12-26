@@ -1,40 +1,31 @@
 name: CI
+
 on:
   push:
-    branches:
-      - main
-    tags: ['*']
   pull_request:
-  workflow_dispatch:
-concurrency:
-  # Skip intermediate builds: always.
-  # Cancel intermediate builds: only if it is a pull request build.
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
+
 jobs:
   test:
-    name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
-    permissions: # needed to allow julia-actions/cache to proactively delete old caches that it has created
-      actions: write
-      contents: read
     strategy:
       fail-fast: false
       matrix:
-        version:
-          - '1.12'
-          #- 'pre'
-        os:
-          - [ubuntu-latest, macos-latest, windows-latest]
-        arch:
-          - x64
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        julia-version: ['1.12']
+
     steps:
       - uses: actions/checkout@v4
-      - uses: julia-actions/setup-julia@v2
+
+      - name: Set up Julia
+        uses: julia-actions/setup-julia@v2
         with:
-          version: ${{ matrix.version }}
-          arch: ${{ matrix.arch }}
-      - uses: julia-actions/cache@v2
-      - uses: julia-actions/julia-buildpkg@v1
-      - uses: julia-actions/julia-runtest@v1
+          version: ${{ matrix.julia-version }}
+
+      - name: Cache Julia artifacts
+        uses: julia-actions/cache@v1
+
+      - name: Build package
+        uses: julia-actions/julia-buildpkg@v1
+
+      - name: Run tests
+        uses: julia-actions/julia-runtest@v1
