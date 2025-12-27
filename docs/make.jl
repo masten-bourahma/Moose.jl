@@ -42,6 +42,6 @@ makedocs(  sitename="Moose.jl",
                        # Deploy to GitHub Pages
 deploydocs(
     repo = "github.com/masten-bourahma/Moose.jl.git", # Replace with your repo URL
-    push_preview = true, # Deploy previews for pull requests
+    push_preview = false, # Deploy previews for pull requests
     devbranch = "dev",) # Branch where development happens
 
