@@ -1,5 +1,47 @@
 ## Running Non-negative Matrix Factorization (NMF)
+We illustrate how to run non-negative matrix factorization on the dataset used in this [paper]().
+The data file can be downloaded [here]().
+```bash
+wget 
+```
+The file, provided in HDF5 format, contains three HDF5 datasets: `redshifts`, `spectra_matrix`, `std_matrix`.
+`spectra_matrix` is a two-dimensional array containing a MUSE galaxy spectrum in each row. Each spectrum represents flux densities sampled on a fixed rest-frame log-wavelengths grid. `std_matrix` is the associated per-pixel uncertainities (standard deviations). `redshifts` is a vector listing the redshift of each spectrum in the `spectra_matrix` dataset.
 
+To read this file run the following commands
+```
+file = h5open("X_2p170461fm05_1p0_unsorted.h5", "r")
+
+```
+```text 
+🗂️ HDF5.File: (read-only) (complete the path)/X_2p170461fm05_1p0_unsorted.h5
+├─ 🔢 redshifts
+├─ 🔢 spectra_matrix
+└─ 🔢 std_matrix
+```
+Next, we can read the `spectra_matrix` and the `std_matrix` datasets.
+```julia
+X = read(file["spectra_matrix"])
+Σ = read(file["std_matrix"])
+```
+(Currate step here)
+...
+
+`Moose.jl` provides an implementation of nearly-NMF [] adapted from this [package](). To run nearly-NMF, we first create an instance of the `nNMF` Struct. At this step, we must provide the spectra matrix `X` and the variance matrix `V = 1 / Σ²` and the desired rank `k`. 
+```julia
+nmf = nNMF(X; V= 1 ./ (Σ .^2), k= 10)
+
+```
+the `nmf` instance has several fields that hold NMF solver matrices and run metadata, most importantly the weights matrix field `.W` and the basis vectors matrix field `.H`.
+
+We then apply the `nearly!()` method on this `nNMF` instance
+```julia
+nearly!(nmf)
+```
+
+After the run finishes, one can access the basis vectors matrix by just calling 
+```julia
+nmf.H
+``` 
 ## Running `Moose.jl` on FITS files
 This example demonstrates how to run `Moose.jl` on a collection of one-dimensional spectra stored as individual FITS files within a single directory.
 We illustrate this workflow using a sample of spectra located @ "data/spectra_sample".
