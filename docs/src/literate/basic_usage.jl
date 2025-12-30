@@ -37,7 +37,7 @@ basis = Basis(wgrid; rank = 10);
 # flux density vector (in the "DATA" HDU) and the corresponding variance (in the "STAT" HDU), from
 # which we derive the standard deviation vector.
 
-hdul = FITS("../../../data/spectra_sample/udf10_00002.fits", "r") 
+hdul = FITS("../../data/spectra_sample/udf10_00002.fits", "r") 
 f   = read(hdul["DATA"])
 σ   = read(hdul["STAT"]) |> (x -> sqrt.(x))
 λref = read_header(hdul["DATA"])["CRVAL1"]

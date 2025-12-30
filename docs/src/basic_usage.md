@@ -1,5 +1,5 @@
 ```@meta
-EditURL = "../_literate/basic_usage.jl"
+EditURL = "literate/basic_usage.jl"
 ```
 
 # Basic usage of `Moose.jl`
@@ -48,7 +48,7 @@ flux density vector (in the "DATA" HDU) and the corresponding variance (in the "
 which we derive the standard deviation vector.
 
 ````julia
-hdul = FITS("../../../data/spectra_sample/udf10_00002.fits", "r")
+hdul = FITS("../../data/spectra_sample/udf10_00002.fits", "r")
 f   = read(hdul["DATA"])
 σ   = read(hdul["STAT"]) |> (x -> sqrt.(x))
 λref = read_header(hdul["DATA"])["CRVAL1"]

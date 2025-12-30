@@ -5,8 +5,8 @@ using Documenter, DocThemeIndigo, Literate, Moose
 indigo_css_path = DocThemeIndigo.install(Moose) 
 
 # Define the input and output directories for Literate
-literate_src_dir   = joinpath(@__DIR__, "src", "_literate")
-literate_build_dir = joinpath(@__DIR__, "src", "_generated") 
+literate_src_dir   = joinpath(@__DIR__, "src", "literate")
+literate_build_dir = joinpath(@__DIR__, "src") 
 
 # Process your Literate script
 Literate.markdown(
@@ -20,6 +20,7 @@ Literate.markdown(
     credit = true,          # Optional: Removes "Powered by Literate.jl" footnote
 )
 
+
 makedocs(  sitename="Moose.jl",
            #remotes = nothing,
            format = Documenter.HTML(
@@ -27,21 +28,20 @@ makedocs(  sitename="Moose.jl",
                     collapselevel = 2,
                     #assets = ["assets/logo.png"],
                     #assets  = String[ indigo_css_path,] ,
-                    ),
-          #          canonical = "https://masten-bourahma.github.io/Moose.jl/stable"), # Your docs URL
-           modules = [Moose],
-           pages   = [ "Home"             => "index.md", # Main page
-                       "Context"          => "context.md",
-                       "Basic usage"  => "_generated/basic_usage.md",
-                       "Usage examples"   => "examples.md",
-                       "API reference"    => "api_reference.md"],
+                    canonical = "https://masten-bourahma.github.io/Moose.jl"),
+           modules   = [Moose],
+           pages     = [ "Home"             => "index.md", # Main page
+                         "Context"          => "context.md",
+                         "Basic usage"      => "basic_usage.md",
+                         "Usage examples"   => "examples.md",
+                         "API reference"    => "api_reference.md"],
            doctest = :true,
            clean = true,
            checkdocs = :all)
 
                        # Deploy to GitHub Pages
 deploydocs(
-    repo = "github.com/masten-bourahma/Moose.jl.git", # Replace with your repo URL
+    repo         = "github.com/masten-bourahma/Moose.jl.git", # Replace with your repo URL
     push_preview = false, # Deploy previews for pull requests
-    devbranch = "dev",) # Branch where development happens
+    devbranch    = "dev",) # Branch where development happens
 
