@@ -3,6 +3,9 @@
 [![CompatHelper](https://github.com/masten-bourahma/Moose.jl/actions/workflows/CompatHelper.yml/badge.svg)](https://github.com/masten-bourahma/Moose.jl/actions/workflows/CompatHelper.yml)
 [![Dependabot Updates](https://github.com/masten-bourahma/Moose.jl/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/masten-bourahma/Moose.jl/actions/workflows/dependabot/dependabot-updates)
 
+[![pages-build-deployment](https://github.com/masten-bourahma/Moose.jl/actions/workflows/pages/pages-build-deployment/badge.svg)](https://github.com/masten-bourahma/Moose.jl/actions/workflows/pages/pages-build-deployment)
+[![Documentation](https://github.com/masten-bourahma/Moose.jl/actions/workflows/documentation.yml/badge.svg)](https://github.com/masten-bourahma/Moose.jl/actions/workflows/documentation.yml)
+
 ## Description
 `Moose.jl` is an open-source Julia package for automated galaxy redshift estimation from optical spectroscopic data. The package was developed in the context of a doctoral research project aimed at constructing robust redshift inference and source detection methods for hyperspectral observations obtained with the Multi-Unit Spectroscopic Explorer (MUSE) instrument at the Very Large Telescope (VLT). The software is designed to scale efficiently to large spectroscopic datasets and to integrate naturally within modern Julia-based scientific computing workflows.
 
