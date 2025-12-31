@@ -2,6 +2,8 @@
 
 [![Build Status](https://github.com/masten-bourahma/Moose.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/masten-bourahma/Moose.jl/actions/workflows/CI.yml?query=branch%3Amain)
 
+[![CompatHelper](https://github.com/masten-bourahma/Moose.jl/actions/workflows/CompatHelper.yml/badge.svg)](https://github.com/masten-bourahma/Moose.jl/actions/workflows/CompatHelper.yml)
+
 ## Paper
 [to come]()
 
