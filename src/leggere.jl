@@ -18,50 +18,46 @@ Arguments
 
 Keyword arguments
 =========
-- **`DataExtName ::String = "DATA"`**   : Name of the data extension
-- **`StatExtName ::String = "STAT"`**   : Name of the stat extension
-
+- **`DataExtName ::String       = "DATA"`**  : Name of the data extension
+- **`StatExtName ::String       = "STAT"`**  : Name of the stat extension
+- **`T           ::Type{<:Real} = Float32`** : Desired element type of output data
 returns
 =======
-- **`data ::NamedTuple`** : NamedTuple with four fields (flux, sdev, awave, ids)
+- **`data ::NamedTuple`** : NamedTuple with four fields (flux, var, awave, ids)
 
 !!! warning
     `DataExtName` and `StatExtName` have to be consistent across fits files
 """
-function leggere(path::String, ::Val{:fits}; DataExtName::Union{String, Int}= "DATA", StatExtName::Union{String, Int}= "STAT")
+function leggere(path::String, ::Val{:fits};
+                 DataExtName::Union{String, Int}= "DATA", StatExtName::Union{String, Int}= "STAT",
+                 T::Type{<:Real}= Float32)
 
-    files = readdir(path; join =true)
-    N     = length(files)
-
-    f, σ, λ = [Vector{Vector{Float32}}(undef, N) for i in 1:3]
+    files   = readdir(path; join =true)
+    N       = length(files)
+    f, v, λ = [Vector{Vector{T}}(undef, N) for i in 1:3]
     fits_ids  = Vector{String}(undef, N)
     
-    
     for i in 1:N
-        hdul        = FITS(files[i])
-        fits_ids[i] = string(read_header(hdul[1])["ID"])
-        f[i]       = read(hdul[DataExtName])
-        σ[i]       = sqrt.(read(hdul[StatExtName]))
+        FITS(files[i], "r") do hdul
+            fits_ids[i] = string(read_header(hdul[1])["ID"])
+            f[i]        = read(hdul[DataExtName])
+            v[i]        = read(hdul[StatExtName])
 
-        # clean the input
-        replace!(f[i], NaN => 0) 
-        replace!(σ[i], NaN => 1f12, Inf => 1f12) 
-        σ[i][f[i] .== 0] .= 1f12 
-        
-        # Read header information
-        λᵣ   = read_header(hdul[DataExtName])["CRVAL1"]
-        L    = read_header(hdul[DataExtName])["NAXIS1"]
-        δλ   = read_header(hdul[DataExtName])["CDELT1"]
-        
-        # Calculate wavelength array
-        λ[i] = λᵣ .+ (0:L-1) .* δλ
-        close(hdul);
+            # clean the input
+            replace!(f[i], NaN => zero(T)) 
+            replace!(v[i], NaN => T(1e12), Inf => T(1e12)) 
+            v[i][f[i] .== zero(T)] .= T(1e12) 
+            
+            # Read header information
+            λᵣ   = read_header(hdul[DataExtName])["CRVAL1"]
+            L    = read_header(hdul[DataExtName])["NAXIS1"]
+            δλ   = read_header(hdul[DataExtName])["CDELT1"]
+            
+            # Calculate wavelength array
+            λ[i] = λᵣ .+ (0:L-1) .* δλ
+        end
     end
-
-    return ( flux         = f,
-             sdev         = σ,
-             awave        = λ,
-             ids          = fits_ids)
+    return ( flux = f, var = v, awave = λ, ids = fits_ids)
 end
 
 """
@@ -112,16 +108,16 @@ function leggere(path::String, ::Val{:chi2file})
         r₁       = read(grp["r_1"])
         ω₁[i]    = read(grp["coeffs_1"]) 
         z₁[i]    = read(grp["z_1"])
-        z₅₎      = read(grp["z_1to5"])
+        z₅₎      = read(grp["z_1to10"])
         Δχ²₁[i]  = read(grp["dchi2_1"])
-        Δχ²₅₎    = read(grp["dchi2_1to5"])
+        Δχ²₅₎    = read(grp["dchi2_1to10"])
         R₁[i]    = read(grp["R_1"])
     end
     close(file)
     
     data = (id = grp_names, chi2_1 = χ²₁, coeffs_1 = ω₁, r_0 = r₀, r_1 = r₁,
-            z_1 = z₁, z_1t05 = z₅₎, dchi2_1 = Δχ²₁ , R_1 = R₁,
-            dchi2_1to5 = Δχ²₅₎)
+            z_1 = z₁, z_1t010 = z₅₎, dchi2_1 = Δχ²₁ , R_1 = R₁,
+            dchi2_1to10 = Δχ²₅₎)
             
     #@info "A NamedTuple will be returned with the following field names and types"
     #println("id", "chi2_1")

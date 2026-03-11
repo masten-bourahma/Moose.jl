@@ -94,7 +94,6 @@ function load_fits(; kwargs...)
 end
     
 function create_h5(dst::String, basis::Basis, wgrid::Γgrid, metadata)
-    
     # Create a new HDF5 file
     N₁, N₂, N₃, λᵣ, δλ = metadata
     h5 = h5open(dst, "w")
@@ -122,16 +121,16 @@ function create_h5(dst::String, basis::Basis, wgrid::Γgrid, metadata)
 
     # Description
     attrs["Description"] = """
-    Groups signification: CHI2_SPAXELS, CHI2_3X3 & CHI2_3X3GK.
-    `CHI2_SPAXELS` corresponds to a run of Moose on individual spaxels.
+    Groups signification: CHI2_SPAXELS, CHI2_3X3 & CHI2_KERNEL.
+    `CHI2_SPAXELS` corresponds to a run on individual spaxels.
     `CHI2_3X3`, corresponds to a run with a simple average in a 3X3 window.
-    `CHI2_3X3GK`, corresponds to a run with a 3X3 Guassian kernel.
+    `CHI2_KERNEL`, corresponds to a run with a PSF kernel.
     """
 
     # ---- Create groups ----
     create_group(h5, "CHI2_SPAXELS")
     create_group(h5, "CHI2_3X3")
-    create_group(h5, "CHI2_3X3GK")
+    create_group(h5, "CHI2_KERNEL")
 
     #close(h5)
     println("✅ HDF5 file created: $dst")
@@ -148,75 +147,70 @@ function load_h5(path::String)
     return h5, iₜ, jₜ
 end
 
-#TODO: implement scrub with a guassian kernel 
 
-function scrub(data::Array{Float32, 3}, stat::Array{Float32, 3}, i::Int, j::Int, N₃::Int)
+function scrub(data::Array{T,3}, stat::Array{T,3}, i::Int, j::Int, N₃::Int) where{T}
     fᵢⱼ = Array(@view data[i, j, :])
-    σᵢⱼ = Array(@view stat[i, j, :])
+    vᵢⱼ = Array(@view stat[i, j, :])
 
     #sanitize
     @inbounds @simd for k in 1:N₃
-        σᵢⱼ[k] = sqrt(σᵢⱼ[k]) 
-    end
-    @inbounds @simd for k in 1:N₃
         f = fᵢⱼ[k]
-        σ = σᵢⱼ[k]
+        v = vᵢⱼ[k]
         if !isfinite(f)
-            fᵢⱼ[k] = 0f0
+            fᵢⱼ[k] = zero(T)
         end
-        if !isfinite(σ) || σ == 0f0 || f == 0f0
-            σᵢⱼ[k] = 1f6
+        if !isfinite(v) || v == zero(T) || f == zero(T)
+            vᵢⱼ[k] = T(1e12)
         end
     end
 
     if sum(iszero.(fᵢⱼ)) > 250
-        return (status=:bad, flux=fᵢⱼ, std=σᵢⱼ)
+        return (status=:bad, flux=fᵢⱼ, var = vᵢⱼ)
     else
-        return (status=:good, flux=fᵢⱼ, std=σᵢⱼ)
+        return (status=:good, flux=fᵢⱼ, var = vᵢⱼ)
     end
 end
-function scrub(data::Array{Float32, 3}, stat::Array{Float32, 3}, kernel::Matrix{Float32},
-               i::Int, j::Int, N₁::Int, N₂::Int, N₃::Int)
-    
-    # subcube indices (3x3 window)
-    i₁ = clamp(i-1, 1, N₁)
-    i₂ = clamp(i+1, 1, N₁)
-    j₁ = clamp(j-1, 1, N₂)
-    j₂ = clamp(j+1, 1, N₂)
+
+function scrub(data::Array{T,3}, stat::Array{T,3}, kernel::Matrix{T},
+               i::Int, j::Int, N₁::Int, N₂::Int, N₃::Int) where{T<:Real}
+    l  = Int((size(kernel, 1) -1)/2)
+    # subcube indices
+    i₁ = clamp(i-l, 1, N₁)
+    i₂ = clamp(i+l, 1, N₁)
+    j₁ = clamp(j-l, 1, N₂)
+    j₂ = clamp(j+l, 1, N₂)
 
     # read subcube
-    f, σ² = zeros(Float32, N₃),  zeros(Float32, N₃)
+    f, σ² = zeros(T, N₃),  zeros(T, N₃)
 
     for u in i₁:i₂, v in j₁:j₂
 
-        kᵤᵥ  = kernel[u-i+2, v-j+2]   # u-i+2, v-j+2 map [-1,0,1] → [1,2,3]
+        kᵤᵥ  = kernel[u-i+ (l+1), v-j+ (l+1)]  
         fᵤᵥ  =  @view data[u, v, :]
         σᵤᵥ² =  @view stat[u, v, :] 
 
         if count(isnan, fᵤᵥ) > 250
             if u == i && v == j
-                return (status=:bad, flux=nothing, std=nothing)
+                return (status=:bad, flux=nothing, var=nothing)
             end
             continue 
         end
         #sanitize
         @inbounds @simd for m in 1:N₃
             if !isfinite(fᵤᵥ[m])
-                f[m] += 0f0
+                f[m]  = zero(T)
             else
-                f[m]  += kᵤᵥ     * fᵤᵥ[m]
+                f[m] += kᵤᵥ * fᵤᵥ[m]
             end
 
-            if !isfinite(σᵤᵥ²[m]) || σᵤᵥ²[m] == 0f0 || fᵤᵥ[m] == 0f0
-                σ²[m] += kᵤᵥ^2 * 1f12
+            if !isfinite(σᵤᵥ²[m]) || σᵤᵥ²[m] == zero(T) || fᵤᵥ[m] == zero(T)
+                σ²[m] += (kᵤᵥ^2) * T(1e12)
             else
-                σ²[m] += kᵤᵥ^2 * σᵤᵥ²[m]
+                σ²[m] += (kᵤᵥ^2) * σᵤᵥ²[m]
             end
-            #f[m]  += kᵤᵥ     * fᵤᵥ[m]
-            #σ²[m] += kᵤᵥ^2   * σᵤᵥ²[m]
         end
     end
-    return (status=:good, flux=f, std=sqrt.(σ²))
+    return (status=:good, flux= f, var = σ²)
 end
 
 
@@ -375,4 +369,47 @@ function awaken(dst, basis, wgrid, metadata)
         output = create_h5(dst, basis, wgrid, metadata)
     end
     return output, iₜ, jₜ
+end
+
+
+function observed!(grid::Vector{T}, λ::Vector{T}, Aᵢ::AbstractMatrix{T}, Aₒ::AbstractMatrix{T}) where{T}
+    f̃ = zeros(T, length(grid))
+    #println(length(grid))
+    for i in 1:size(Aᵢ,1)
+        #println(size(grid), "-", size(λ), "-", size(Aᵢ[i,:]),"-", size(f̃))
+        interpolate!(grid, λ, Aᵢ[i,:], f̃)
+        #println(size(Aₒ[i,:]),"-", size(f̃))
+        Aₒ[i,:] .= f̃
+    end
+end
+
+"""
+    psf_kernel(fwhm::T)
+Description
+===========
+This function builds a Guassian PSF kernel, given the fwhm of the PSF in arcsec. The kernel size is set by `ceil(Int, 3*σ)`.
+
+Arguments 
+=========
+- **`fwhm :: T`** : FWHM of the PSF
+
+Returns 
+=======
+PSF kernel
+"""
+function psf_kernel(fwhm::T) where{T<:Real}
+    
+    pixel_scale = 0.2f0     # arcsec/pixel
+    σ                    = fwhm / (2.355f0 *pixel_scale) # in pixels
+
+    kernel_radius = ceil(Int, 3*σ)  # radius in pixels
+    kernel_size   = 2*kernel_radius + 1  # total size, odd number
+    
+    x = -kernel_radius:kernel_radius
+    y = -kernel_radius:kernel_radius
+
+    K = [exp(-(xᵢ^2 + yᵢ^2) / (2σ^2)) for xᵢ in x, yᵢ in y]
+    K = K ./ sum(K)
+
+    return T.(K)
 end

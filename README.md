@@ -33,5 +33,9 @@ julia> Pkg.add(Pkg.add(url="https://github.com/masten-bourahma/Moose.jl", rev="d
 ```
 The package is under active development, and code and interfaces may evolve.
 
-## Accompanying publication
-A detailed methodological description and scientific validation of Moose.jl will be presented in a forthcoming publication.
+## Accompanying publication & NMF training set
+A detailed methodological description and scientific validation of `Moose.jl`, as well as the dataset used to learn the MUSE galaxy basis vectors with NMF can be found at:
+
+[![arXiv](https://img.shields.io/badge/arXiv-2603.09389-b31b1b.svg)](https://arxiv.org/abs/2603.09389) [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18066943.svg)](https://doi.org/10.5281/zenodo.18066943)
+
+

@@ -1,1 +1,6 @@
 /Manifest*.toml
+
+notebooks/example_datacube.ipynb
+notebooks/blends.ipynb
+
+/docs/src/example_datacube.md
