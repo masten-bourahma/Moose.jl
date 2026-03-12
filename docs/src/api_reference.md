@@ -29,5 +29,4 @@ flow
 ### Utils
 ```@docs
 leggere
-fits_to_h5
 ```

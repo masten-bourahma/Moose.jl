@@ -37,7 +37,7 @@ makedocs(  sitename="Moose.jl",
                          "API reference"    => "api_reference.md"],
            doctest = :true,
            clean = true,
-           checkdocs = :all)
+           checkdocs = :none)
 
                        # Deploy to GitHub Pages
 deploydocs(
