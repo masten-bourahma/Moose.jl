@@ -34,31 +34,30 @@ basis = Basis(wgrid; rank = 10);
 # ### Loading and visualizing the spectrum
 #
 # We load an example spectrum from a FITS file. The file contains the
-# flux density vector (in the "DATA" HDU) and the corresponding variance (in the "STAT" HDU), from
-# which we derive the standard deviation vector.
+# flux density vector (in the "DATA" HDU) and the corresponding variance vector (in the "STAT" HDU).
 
 hdul = FITS("../../data/spectra_sample/udf10_00002.fits", "r") 
 f   = read(hdul["DATA"])
-σ   = read(hdul["STAT"]) |> (x -> sqrt.(x))
+v   = read(hdul["STAT"])
 λref = read_header(hdul["DATA"])["CRVAL1"]
 N    = read_header(hdul["DATA"])["NAXIS1"]
 δλ   = read_header(hdul["DATA"])["CDELT1"]
 λ    = collect(Float32, λref .+ (0:N-1) .* δλ)
 close(hdul)
-
+    
 # Take a look at the spectrum and its associated uncertainties.
 p = plot(λ, f, lw =2 , xlabel ="λ [Å]", ylabel ="fλ [ergs Å^-1 s^-1 cm^-2]",color="black", label ="spectrum",)
-plot!(p, λ, σ, lw =2 , alpha = 0.7, label = "standard deviations")
+plot!(p, λ, sqrt.(v), lw =2 , alpha = 0.7, label = "standard deviations")
 p = DisplayAs.PNG(p) #hide
-# The plot above displays an emission-line galaxy spectrum at redshift [0.4193](https://amused.univ-lyon1.fr/project/UDF/HUDF/2).
-# Usually, raw data comes with `NaN` and `Inf` values. To avoid errors related to these values, let us clean the flux densities and standard deviations.
-# We assign zeros for `NaN`s in fluxes, and a high number for `NaN`s and `Inf`s in standard deviations.
+# The plot above displays an emission-line galaxy spectrum at redshift 0.4193 (more details [here](https://amused.univ-lyon1.fr/project/UDF/HUDF/2)).
+# Usually, raw data comes with `NaN` and `Inf` values. To avoid errors related to these values, let us clean the flux densities and variances.
+# We assign zeros for `NaN`s in fluxes, and a high number for `NaN`s and `Inf`s in the variance vector.
 replace!(f, NaN => 0)
-replace!(σ, NaN => 1f6, Inf => 1f6)
-σ[f .== 0] .= 1f6
+replace!(v, NaN => 1f12, Inf => 1f12)
+v[f .== 0] .= 1f12
 # ### Redshift inference
-# We interpolate the flux densities and standard deviations to the rest-frame grid using the `interpolate()` function.
-fʳ, σʳ = interpolate(basis, f, σ , λ);
+# We interpolate the flux densities and variances to the rest-frame grid using the `interpolate()` function.
+fʳ, vʳ = interpolate(basis, f, v , λ);
 #md # !!! note
 #md #     The function `interpolate()` interpolates the products f × λ and σ × λ  to the rest-frame log-wavelegths grid  
 
@@ -66,7 +65,7 @@ fʳ, σʳ = interpolate(basis, f, σ , λ);
 # For each trial redshift in `wgrid.ζ`, the `flow()` function projects the spectrum into the basis slice (corresponding to this trial redshift).
 # The projection is carried out using a fast non-negative least squares follwed by a χ² error evaluation between input and reconstruction. The `flow()`
 # function outputs a χ² vector represeting error for each trial redshift.
-χ² = flow(basis, fʳ, σʳ);
+χ² = flow(basis, fʳ, σʳ, Val(:no_coeffs));
 # 
 # The `flow()` function returns the χ² vector (error for each trial redshift). We can now plot the obtained χ² curve.
 #md # ```julia
