@@ -35,7 +35,6 @@ using Moose, Test
         #test flow() & flow!() functions
         χ²    = flow(basis, fʳ, vʳ, Val(:no_coeffs))
         χ², Ω = flow(basis, fʳ, vʳ, Val(:coeffs))
-        display(plot(χ²))
 
         χ² = zeros(Float32, basis.n)
         Ω  = zeros(Float32, basis.k, basis.n)
@@ -95,7 +94,7 @@ using Moose, Test
 
         AtA = A'*A
         Atb = A'*b
-        @test sqrt((sum(fnnls(AtA,Atb)- xknown) .^2)/2) < 1f-5
+        @test sqrt((sum(fnnls(AtA,Atb)- xknown) .^2)/2) < 1f-5;
     end
 
     @testset "Test nmf.jl" begin
@@ -106,23 +105,6 @@ using Moose, Test
               
         nmf = nNMF(X)
         error, iter = nearly!(nmf)
-        @test isfinite(error)
+        @test isfinite(error);
     end
-
 end
-
-path  = joinpath(@__DIR__, "../data/spectra_sample/")
-data  = leggere(path, Val(:fits))
-
-wgrid = Γgrid(λmin = 4700f0, δζ = 5f-4)
-basis = Basis(wgrid, Val(:observed))
-wgrid = Γgrid(λmin = 4750f0, δζ = 5f-4)
-basis.n
-basis.l
-update!(basis, wgrid, Val(:observed))
-basis.l
-
-j = 5
-f, σ, λ, id   = data.flux[j], data.sdev[j], data.awave[j], data.ids[j] 
-
-@time χ²    = flow(basis, f, σ .^2)
