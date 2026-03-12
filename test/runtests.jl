@@ -1,4 +1,4 @@
-using Moose, Test, Plots
+using Moose, Test
 
 @testset "Moose.jl" begin
     @testset "Test metrics.jl" begin

@@ -9,16 +9,16 @@ literate_src_dir   = joinpath(@__DIR__, "src", "literate")
 literate_build_dir = joinpath(@__DIR__, "src") 
 
 # Process your Literate script
-#Literate.markdown(
-#    joinpath(literate_src_dir, "basic_usage.jl"),
-#    literate_build_dir;
-#    size_threshold = 400,
-#    size_threshold_warn = 250 * 1024,
-#    execute = true,          # Runs the code and captures output
-#    documenter = true,       # Handles Documenter-specific syntax
-#    name = "basic_usage",       # Output file will be usage_example.md
-#    credit = true,          # Optional: Removes "Powered by Literate.jl" footnote
-#)
+Literate.markdown(
+    joinpath(literate_src_dir, "basic_usage.jl"),
+    literate_build_dir;
+    size_threshold = 400,
+    size_threshold_warn = 250 * 1024,
+    execute = true,          # Runs the code and captures output
+    documenter = true,       # Handles Documenter-specific syntax
+    name = "basic_usage",       # Output file will be usage_example.md
+    credit = true,          # Optional: Removes "Powered by Literate.jl" footnote
+)
 
 
 makedocs(  sitename="Moose.jl",
