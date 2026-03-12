@@ -65,7 +65,7 @@ fʳ, vʳ = interpolate(basis, f, v , λ);
 # For each trial redshift in `wgrid.ζ`, the `flow()` function projects the spectrum into the basis slice (corresponding to this trial redshift).
 # The projection is carried out using a fast non-negative least squares follwed by a χ² error evaluation between input and reconstruction. The `flow()`
 # function outputs a χ² vector represeting error for each trial redshift.
-χ² = flow(basis, fʳ, σʳ, Val(:no_coeffs));
+χ² = flow(basis, fʳ, vʳ, Val(:no_coeffs));
 # 
 # The `flow()` function returns the χ² vector (error for each trial redshift). We can now plot the obtained χ² curve.
 #md # ```julia
